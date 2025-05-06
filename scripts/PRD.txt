@@ -1,0 +1,70 @@
+<context>
+# Overview  
+This project aims to automate the creation of personalized social media videos by transforming existing YouTube content into original, humorous scripts that reflect your unique voice and style. It leverages OpenAI for content rewriting, provides experimentation with comedic variations, integrates with HeyGen for video generation, and utilizes ElevenLabs for optional audio generation. Finally, it streamlines posting the resulting videos across social media platforms such as LinkedIn, TikTok, and YouTube Shorts, saving videos in AWS S3.
+
+# Core Features  
+### 1. YouTube URL Script Extraction
+- **What it does:** Automatically extracts scripts from YouTube URLs.
+- **Why it's important:** Streamlines content sourcing.
+- **How it works at a high level:** Utilizes a reliable YouTube transcript extraction library.
+
+### 2. AI-Driven Script Personalization
+- **What it does:** Transforms extracted scripts into personalized, humorous content.
+- **Why it's important:** Provides uniqueness and aligns with personal branding.
+- **How it works at a high level:** Employs OpenAI's GPT models to rewrite content matching your style.
+
+### 3. Humor Experimentation Interface
+- **What it does:** Allows users to click on a paragraph and generate humorous rewrites in a row alongside the original, each styled after a different famous comedian.
+- **Why it's important:** Enables creative control and fine-tuning of comedic tone.
+- **How it works at a high level:** Provides UI buttons attached to each paragraph that trigger GPT to return humorous variants in the voices of selected iconic comedians.
+
+### 4. Video and Audio Generation Integration
+- **What it does:** Generates avatar-based videos using HeyGen and optional custom audio using ElevenLabs.
+- **Why it's important:** Simplifies multimedia content creation.
+- **How it works at a high level:** Integrates APIs from HeyGen and ElevenLabs with automated workflows.
+
+### 5. Social Media Publishing Workflow
+- **What it does:** Facilitates direct posting to LinkedIn, TikTok, and YouTube Shorts.
+- **Why it's important:** Streamlines content distribution.
+- **How it works at a high level:** Saves generated videos to AWS S3 and automates posting via platform APIs.
+</context>
+
+<PRD>
+# Technical Architecture  
+- **System components:** React frontend, Node.js backend, YouTube transcript library, OpenAI API, HeyGen API, ElevenLabs API, AWS S3, Social media platform APIs  
+- **Data models:** Script objects, humor experiment variations, media file metadata  
+- **APIs and integrations:** YouTube transcript API, OpenAI GPT-4 API, HeyGen, ElevenLabs, LinkedIn, TikTok, YouTube Shorts, AWS SDK  
+- **Infrastructure requirements:** Hosted on AWS with scalable backend and S3 for media
+
+# Development Roadmap  
+## MVP Requirements  
+- URL to Script extraction  
+- OpenAI script rewriting integration  
+- Basic humor experimentation UI with comedian-based variants  
+- Integration with HeyGen and ElevenLabs  
+- Media storage in AWS S3  
+- Posting to LinkedIn, TikTok, YouTube Shorts  
+
+## Future Enhancements  
+- Advanced humor styling options  
+- Performance analytics  
+- Enhanced error handling  
+- Support for more platforms  
+
+# Logical Dependency Chain  
+- YouTube URL parsing  
+- OpenAI rewriting  
+- Humor experimentation buttons per paragraph  
+- HeyGen and ElevenLabs integration  
+- AWS S3 storage  
+- Social media posting  
+
+# Risks and Mitigations  
+- **Technical challenges:** Addressed via phased API testing and integration.  
+- **Figuring out the MVP:** Strictly prioritize foundational features.  
+- **Resource constraints:** Limit scope and sequence phases accordingly.
+
+# Appendix  
+- External API docs  
+- UI wireframe sketches  
+</PRD>
