@@ -1,5 +1,8 @@
 {
   "dependencies": {
-    "task-master-ai": "^0.13.2"
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "task-master-ai": "^0.13.2",
+    "youtube-transcript-plus": "^1.0.4"
   }
 }

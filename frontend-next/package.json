@@ -1,0 +1,28 @@
+{
+  "name": "frontend-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next dev --turbopack",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1692.0",
+    "formidable": "^3.5.4",
+    "next": "15.3.3",
+    "openai": "^5.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "youtube-transcript": "^1.2.1",
+    "youtube-transcript-plus": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/formidable": "^3.4.5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}
