@@ -7,11 +7,18 @@ import { findPromptScript, addPromptScript } from '@/utils/promptStorage';
 
 export async function POST(req: NextRequest) {
   try {
-    const { script, userStyle, force } = await req.json();
+    const { script, userStyle, force, newsNuggets } = await req.json();
     if (!script || typeof script !== 'string' || !userStyle || typeof userStyle !== 'string') {
       return NextResponse.json({
         error: 'BadRequest',
         message: 'Missing or invalid script or userStyle.',
+        status: 400,
+      }, { status: 400 });
+    }
+    if (!Array.isArray(newsNuggets) || newsNuggets.length !== 3 || newsNuggets.some(n => typeof n !== 'string' || !n.trim())) {
+      return NextResponse.json({
+        error: 'BadRequest',
+        message: 'newsNuggets must be an array of 3 non-empty strings.',
         status: 400,
       }, { status: 400 });
     }
@@ -33,7 +40,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const prompt = personalizeScriptPrompt.build({ script, userStyle });
+    // TODO: Get news nuggets from the API
+    const prompt = personalizeScriptPrompt.build({ script, userStyle, newsNuggets });
     console.log('prompt', prompt);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
