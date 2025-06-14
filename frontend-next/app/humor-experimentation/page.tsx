@@ -64,6 +64,25 @@ export default function HumorExperimentationPage() {
   const [pasteUrl, setPasteUrl] = useState("");
   const [paragraphsOverride, setParagraphsOverride] = useState<string[] | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // State for Latest News
+  const [newsExpanded, setNewsExpanded] = useState(false);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  type NewsItem = string | { headline: string; summary: string };
+  const [newsHeadlines, setNewsHeadlines] = useState<NewsItem[]>([]);
+  const [newsCached, setNewsCached] = useState(false);
+  // Add state for checked news stories (indices)
+  const [checkedNewsIndices, setCheckedNewsIndices] = useState<number[]>([0, 1, 2]);
+  // Add state for video generation
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoStatus, setVideoStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
+  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
+  const [videoGif, setVideoGif] = useState<string | null>(null);
+  // Add state and handler for Output Avatars button
+  const [avatarsLoading, setAvatarsLoading] = useState(false);
+  const [avatarsError, setAvatarsError] = useState<string | null>(null);
+  const [voicesError, setVoicesError] = useState<string | null>(null);
 
   // Add style for joke highlighting
   // (This can be moved to a CSS file if desired)
@@ -121,6 +140,33 @@ export default function HumorExperimentationPage() {
   const scriptText = selectedScript?.rewritten || selectedScript?.original || DUMMY_SCRIPT;
   const paragraphs = paragraphsOverride || scriptText.split("\n").filter((p: string) => p.trim().length > 0);
 
+  // When newsHeadlines changes, reset checked indices to top 3
+  useEffect(() => {
+    setCheckedNewsIndices([0, 1, 2]);
+  }, [newsHeadlines]);
+
+  // Handler for checking/unchecking news stories
+  const handleNewsCheckbox = (idx: number) => {
+    setCheckedNewsIndices((prev) => {
+      if (prev.includes(idx)) {
+        // Uncheck
+        return prev.filter(i => i !== idx);
+      } else if (prev.length < 3) {
+        // Add new checked
+        return [...prev, idx];
+      } else {
+        // Replace the oldest checked
+        return [...prev.slice(1), idx];
+      }
+    });
+  };
+
+  // Helper to get checked news headlines (for prompt)
+  const checkedNewsHeadlines = checkedNewsIndices
+    .map(i => newsHeadlines[i])
+    .filter(item => item && typeof item === 'object' && 'headline' in item && 'summary' in item)
+    .map(item => `${(item as { headline: string; summary: string }).headline}: ${(item as { headline: string; summary: string }).summary}`);
+
   // Refactor handleExperiment to support multiple variants per paragraph
   const handleExperiment = async (idx: number) => {
     setLoadingIdx(idx);
@@ -134,7 +180,8 @@ export default function HumorExperimentationPage() {
         body: JSON.stringify({
           script: paragraphs[idx],
           userStyle: comedian,
-          force: true
+          force: true,
+          newsNuggets: checkedNewsHeadlines
         })
       });
       if (!res.ok) {
@@ -468,6 +515,280 @@ export default function HumorExperimentationPage() {
     }
   };
 
+  // Replace the news fetching useEffect and logic with the following:
+  useEffect(() => {
+    // On mount, check localStorage for cached news
+    const cacheKey = 'latestNewsCache';
+    const cache = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+    let parsed: { news: NewsItem[]; timestamp: number } | null = null;
+    if (cache) {
+      try {
+        parsed = JSON.parse(cache);
+      } catch {}
+    }
+    const now = Date.now();
+    if (parsed && Array.isArray(parsed.news) && parsed.timestamp && now - parsed.timestamp < 8 * 60 * 60 * 1000) {
+      setNewsHeadlines(parsed.news);
+      setNewsCached(true);
+      setNewsLoading(false);
+    } else {
+      setNewsLoading(true);
+      setNewsError(null);
+      fetch('/api/latest-news')
+        .then(res => res.json())
+        .then(data => {
+          const news = Array.isArray(data.newsStories) ? data.newsStories : [];
+          setNewsHeadlines(news);
+          setNewsCached(false);
+          setNewsLoading(false);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(cacheKey, JSON.stringify({ news, timestamp: Date.now() }));
+          }
+        })
+        .catch(err => {
+          setNewsError('Failed to load news stories.');
+          setNewsLoading(false);
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Add a handler to clear the localStorage cache and refetch
+  const handleClearNewsCache = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('latestNewsCache');
+      setNewsHeadlines([]);
+      setNewsCached(false);
+      setNewsLoading(true);
+      setNewsError(null);
+      fetch('/api/latest-news')
+        .then(res => res.json())
+        .then(data => {
+          const news = Array.isArray(data.newsStories) ? data.newsStories : [];
+          setNewsHeadlines(news);
+          setNewsCached(false);
+          setNewsLoading(false);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('latestNewsCache', JSON.stringify({ news, timestamp: Date.now() }));
+          }
+        })
+        .catch(err => {
+          setNewsError('Failed to load news stories.');
+          setNewsLoading(false);
+        });
+    }
+  };
+
+  // Handler for generating video from rewritten script
+  const handleGenerateVideo = async () => {
+    if (!selectedScript || !selectedScript.rewritten) return;
+    setVideoLoading(true);
+    setVideoError(null);
+    setVideoStatus('processing');
+    setVideoThumbnail(null);
+    setVideoGif(null);
+
+    try {
+      // Call HeyGen API with avatar and voice IDs
+      const res = await fetch('/api/heygen-generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          script: selectedScript.rewritten,
+          avatar_id: 'Chad_in_Blue_Shirt_Front',
+          voice_id: '8f0944e10aad4e989bce8f76807b6f36'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to generate video');
+      }
+
+      // Check if we have a valid video ID
+      if (!data.videoId) {
+        throw new Error('No video ID received from API');
+      }
+
+      console.log('Starting video generation with ID:', data.videoId);
+
+      // Start polling for video status
+      const pollInterval = setInterval(async () => {
+        try {
+          console.log('Polling video status for ID:', data.videoId);
+          const statusRes = await fetch(`/api/heygen-video-status?videoId=${encodeURIComponent(data.videoId)}`);
+          const statusData = await statusRes.json();
+          
+          if (statusData.status === 'completed' && statusData.videoUrl) {
+            clearInterval(pollInterval);
+            setVideoStatus('completed');
+            setVideoThumbnail(statusData.thumbnailUrl);
+            setVideoGif(statusData.gifUrl);
+            
+            // Save video URL and thumbnail to script
+            const saveRes = await fetch('/api/save-script', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...selectedScript,
+                videoUrl: statusData.videoUrl,
+                videoThumbnail: statusData.thumbnailUrl,
+                videoGif: statusData.gifUrl,
+                videoDuration: statusData.duration,
+                videoCreatedAt: statusData.created_at
+              })
+            });
+            const savedScript = await saveRes.json();
+            setSelectedScript(savedScript);
+            setVideoLoading(false);
+          } else if (statusData.status === 'failed' || statusData.error) {
+            clearInterval(pollInterval);
+            setVideoStatus('failed');
+            setVideoError(statusData.error || 'Video generation failed');
+            setVideoLoading(false);
+          } else if (statusData.status === 'processing' || statusData.status === 'pending') {
+            setVideoStatus('processing');
+            // Update thumbnail or GIF if available
+            if (statusData.thumbnailUrl) {
+              setVideoThumbnail(statusData.thumbnailUrl);
+              // Save thumbnail even during processing
+              const saveRes = await fetch('/api/save-script', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ...selectedScript,
+                  videoThumbnail: statusData.thumbnailUrl
+                })
+              });
+              const savedScript = await saveRes.json();
+              setSelectedScript(savedScript);
+            }
+            if (statusData.gifUrl) {
+              setVideoGif(statusData.gifUrl);
+              // Save GIF if available
+              const saveRes = await fetch('/api/save-script', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ...selectedScript,
+                  videoGif: statusData.gifUrl
+                })
+              });
+              const savedScript = await saveRes.json();
+              setSelectedScript(savedScript);
+            }
+          }
+        } catch (err) {
+          console.error('Error polling video status:', err);
+          clearInterval(pollInterval);
+          setVideoStatus('failed');
+          setVideoError('Failed to check video status');
+          setVideoLoading(false);
+        }
+      }, 5000); // Poll every 5 seconds
+
+      // Clear interval after 10 minutes (timeout)
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (videoLoading) {
+          setVideoStatus('failed');
+          setVideoError('Video generation timed out');
+          setVideoLoading(false);
+        }
+      }, 10 * 60 * 1000);
+
+    } catch (err: any) {
+      console.error('Error generating video:', err);
+      setVideoStatus('failed');
+      setVideoError(err.message || 'Unknown error');
+      setVideoLoading(false);
+    }
+  };
+
+  // Handler to fetch and output avatars
+  const handleOutputAvatars = async () => {
+    setAvatarsLoading(true);
+    setAvatarsError(null);
+    setVoicesError(null);
+    const cacheKey = 'heygenAvatarsCache';
+    const voicesCacheKey = 'heygenVoicesCache';
+    const cache = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+    const voicesCache = typeof window !== 'undefined' ? localStorage.getItem(voicesCacheKey) : null;
+    let parsed: { avatars: any[]; talking_photos: any[]; timestamp: number } | null = null;
+    let voicesParsed: { voices: any[]; timestamp: number } | null = null;
+    const now = Date.now();
+    if (cache) {
+      try {
+        parsed = JSON.parse(cache);
+      } catch {}
+    }
+    if (voicesCache) {
+      try {
+        voicesParsed = JSON.parse(voicesCache);
+      } catch {}
+    }
+    if (parsed && parsed.avatars && parsed.timestamp && now - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
+      // Cache valid (7 days)
+      console.log('Heygen Avatars (from cache):', parsed.avatars);
+      console.log('Heygen Talking Photos (from cache):', parsed.talking_photos);
+      if (voicesParsed && voicesParsed.voices && voicesParsed.timestamp && now - voicesParsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
+        console.log('Heygen Voices (from cache):', voicesParsed.voices);
+      } else {
+        // Fetch voices if not cached
+        try {
+          const voicesRes = await fetch('/api/heygen-list-voices');
+          const voicesData = await voicesRes.json();
+          if (!voicesRes.ok || !Array.isArray(voicesData.voices)) {
+            throw new Error(voicesData.message || voicesData.error || 'Failed to fetch voices');
+          }
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(voicesCacheKey, JSON.stringify({ voices: voicesData.voices, timestamp: Date.now() }));
+          }
+          console.log('Heygen Voices:', voicesData.voices);
+        } catch (err: any) {
+          setVoicesError(err.message || 'Failed to fetch voices');
+        }
+      }
+      setAvatarsLoading(false);
+      return;
+    }
+    // Fetch both avatars and voices in parallel
+    const avatarsPromise = (async () => {
+      try {
+        // NOTE: You may need to add your API key here or use a backend proxy for security
+        const res = await fetch('/api/heygen-list-avatars');
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data.avatars)) {
+          throw new Error(data.message || data.error || 'Failed to fetch avatars');
+        }
+        // Cache for 7 days
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(cacheKey, JSON.stringify({ avatars: data.avatars, talking_photos: data.talking_photos || [], timestamp: Date.now() }));
+        }
+        console.log('Heygen Avatars:', data.avatars);
+        console.log('Heygen Talking Photos:', data.talking_photos || []);
+      } catch (err: any) {
+        setAvatarsError(err.message || 'Failed to fetch avatars');
+      }
+    })();
+    const voicesPromise = (async () => {
+      try {
+        const voicesRes = await fetch('/api/heygen-list-voices');
+        const voicesData = await voicesRes.json();
+        if (!voicesRes.ok || !Array.isArray(voicesData.voices)) {
+          throw new Error(voicesData.message || voicesData.error || 'Failed to fetch voices');
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(voicesCacheKey, JSON.stringify({ voices: voicesData.voices, timestamp: Date.now() }));
+        }
+        console.log('Heygen Voices:', voicesData.voices);
+      } catch (err: any) {
+        setVoicesError(err.message || 'Failed to fetch voices');
+      }
+    })();
+    await Promise.all([avatarsPromise, voicesPromise]);
+    setAvatarsLoading(false);
+  };
+
   return (
     <>
       {/* Paste Transcript Button and Modal */}
@@ -488,6 +809,53 @@ export default function HumorExperimentationPage() {
         >
           Paste Transcript
         </button>
+        <button
+          onClick={handleGenerateVideo}
+          disabled={
+            !selectedScript ||
+            !selectedScript.rewritten ||
+            !!selectedScript.videoUrl
+          }
+          style={{
+            padding: "8px 16px",
+            fontSize: 16,
+            background: "#2563eb",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            cursor: !selectedScript || !selectedScript.rewritten || !!selectedScript.videoUrl ? "not-allowed" : "pointer",
+            opacity: !selectedScript || !selectedScript.rewritten || !!selectedScript.videoUrl ? 0.7 : 1,
+            marginLeft: 8
+          }}
+          title="Generate a video from the selected script."
+        >
+          Generate Video
+        </button>
+        {/* Output Avatars Button */}
+        <button
+          onClick={handleOutputAvatars}
+          disabled={avatarsLoading}
+          style={{
+            padding: "8px 16px",
+            fontSize: 16,
+            background: avatarsLoading ? "#333" : "#2563eb",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            cursor: avatarsLoading ? "not-allowed" : "pointer",
+            opacity: avatarsLoading ? 0.7 : 1,
+            marginLeft: 8
+          }}
+          title="Fetch and output Heygen avatars to the console."
+        >
+          {avatarsLoading ? "Loading Avatars..." : "Output Avatars"}
+        </button>
+        {avatarsError && (
+          <span style={{ color: '#f87171', marginLeft: 8 }}>{avatarsError}</span>
+        )}
+        {voicesError && (
+          <span style={{ color: '#f87171', marginLeft: 8 }}>{voicesError}</span>
+        )}
       </div>
       {showPasteModal && (
         <div style={{
@@ -686,6 +1054,25 @@ export default function HumorExperimentationPage() {
         >
           ⚡
         </button>
+        {/* Mad Scientist Debug Button */}
+        <button
+          onClick={() => console.log(selectedScript)}
+          disabled={!selectedScript}
+          title="Log the current script object to the console for inspection."
+          style={{
+            background: "#23232a",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "6px 10px",
+            fontSize: 18,
+            cursor: !selectedScript ? "not-allowed" : "pointer",
+            opacity: !selectedScript ? 0.5 : 1,
+            marginLeft: 4
+          }}
+        >
+          🧑‍🔬
+        </button>
         {/* Rewrite Modal */}
         {showRewriteModal && selectedScript && (
           <div style={{
@@ -790,10 +1177,119 @@ export default function HumorExperimentationPage() {
                 >
                   {rewriteLoading ? 'Rewriting...' : 'Rewrite'}
                 </button>
+                <button
+                  onClick={() => console.log(selectedScript)}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: 16,
+                    background: '#333',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    cursor: rewriteLoading ? 'not-allowed' : 'pointer',
+                    opacity: rewriteLoading ? 0.7 : 1,
+                    marginLeft: 4
+                  }}
+                  disabled={rewriteLoading}
+                  title="Log the current script object to the console for inspection."
+                >
+                  🧑‍🔬
+                </button>
               </div>
             </div>
           </div>
         )}
+      </div>
+      {/* Latest News Expandable Section */}
+      <div style={{ maxWidth: 800, margin: '0 auto 16px auto', padding: 0, background: 'none' }}>
+        <div
+          style={{
+            background: '#23232a',
+            color: '#f3f3f3',
+            borderRadius: 6,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+            marginTop: 8,
+            marginBottom: 8,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <button
+              onClick={() => setNewsExpanded((v: boolean) => !v)}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                background: 'none',
+                color: '#f3f3f3',
+                border: 'none',
+                padding: '14px 18px',
+                fontSize: 18,
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
+                flex: 1,
+              }}
+              aria-expanded={newsExpanded}
+              aria-controls="latest-news-panel"
+              title="Show or hide the latest news stories for joke inspiration."
+            >
+              <span>{newsExpanded ? '▼' : '►'}</span>
+              Latest News (for Joke Inspiration)
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClearNewsCache();
+              }}
+              style={{
+                background: 'none',
+                color: '#f3f3f3',
+                border: 'none',
+                padding: '0',
+                fontSize: 18,
+                cursor: 'pointer',
+              }}
+            >
+              🗑️
+            </button>
+          </div>
+          {newsExpanded && (
+            <div id="latest-news-panel" style={{ padding: '16px 24px', borderTop: '1px solid #333', background: '#18181b' }}>
+              {newsLoading ? (
+                <div style={{ color: '#38bdf8', fontSize: 16 }}>Loading news...</div>
+              ) : newsError ? (
+                <div style={{ color: '#f87171', fontSize: 16 }}>{newsError}</div>
+              ) : newsHeadlines.length > 0 ? (
+                <ul style={{ margin: 0, padding: 0, listStyle: 'none', color: '#a3e635', fontSize: 16 }}>
+                  {newsHeadlines.map((item: NewsItem, idx: number) => {
+                    if (typeof item === 'string') {
+                      // Old format: just a headline string
+                      return <li key={idx} style={{ marginBottom: 18 }}><strong>{item}</strong></li>;
+                    } else if (item && typeof item === 'object' && 'headline' in item && 'summary' in item) {
+                      // New format: object with headline and summary
+                      return (
+                        <li key={idx} style={{ marginBottom: 18, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <input type="checkbox" checked={checkedNewsIndices.includes(idx)} disabled={!checkedNewsIndices.includes(idx) && checkedNewsIndices.length >= 3} onChange={() => handleNewsCheckbox(idx)} style={{ marginTop: 4 }} />
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#f3f3f3', marginBottom: 4 }}>{item.headline}</div>
+                            <div style={{ color: '#a3a3a3', fontSize: 15, lineHeight: 1.5 }}>{item.summary}</div>
+                          </div>
+                        </li>
+                      );
+                    } else {
+                      return null;
+                    }
+                  })}
+                </ul>
+              ) : (
+                <div style={{ color: '#888', fontSize: 16 }}>No news stories found.</div>
+              )}
+              {newsCached && !newsLoading && (
+                <div style={{ color: '#38bdf8', fontSize: 13, marginTop: 8 }}>(cached for 8h)</div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
@@ -878,6 +1374,87 @@ export default function HumorExperimentationPage() {
             <a href={selectedScript.url} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'underline' }}>{selectedScript.url}</a>
           </div>
         )}
+
+        {/* Show video or loading state */}
+        {(selectedScript?.videoUrl || videoLoading) && (
+          <div style={{ marginBottom: 32 }}>
+            {videoLoading ? (
+              <div style={{ 
+                width: '100%', 
+                aspectRatio: '16/9', 
+                background: '#23232a', 
+                borderRadius: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 16
+              }}>
+                <div style={{ 
+                  width: 48, 
+                  height: 48, 
+                  border: '4px solid #f3f3f3',
+                  borderTop: '4px solid #2563eb',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+                <div style={{ color: '#f3f3f3', fontSize: 16 }}>
+                  {videoStatus === 'processing' ? 'Generating video...' : 'Loading...'}
+                </div>
+                {videoThumbnail && (
+                  <img 
+                    src={videoThumbnail} 
+                    alt="Video thumbnail" 
+                    style={{ 
+                      maxWidth: '100%', 
+                      maxHeight: 200, 
+                      borderRadius: 4,
+                      opacity: 0.7
+                    }} 
+                  />
+                )}
+                {videoGif && (
+                  <img 
+                    src={videoGif} 
+                    alt="Video preview" 
+                    style={{ 
+                      maxWidth: '100%', 
+                      maxHeight: 200, 
+                      borderRadius: 4,
+                      opacity: 0.7
+                    }} 
+                  />
+                )}
+              </div>
+            ) : selectedScript?.videoUrl ? (
+              <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative' }}>
+                <video 
+                  src={selectedScript.videoUrl} 
+                  controls 
+                  style={{ 
+                    width: '100%', 
+                    height: '100%',
+                    borderRadius: 8, 
+                    background: '#000',
+                    objectFit: 'contain'
+                  }} 
+                />
+              </div>
+            ) : null}
+            {videoError && (
+              <div style={{ 
+                color: '#f87171', 
+                marginTop: 8, 
+                padding: 12, 
+                background: '#23232a', 
+                borderRadius: 8 
+              }}>
+                {videoError}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Paragraph Display and Selection */}
         <div style={{ marginBottom: 32 }}>
           <h2 style={{ color: "#fff", fontSize: 20 }}>Script Paragraphs</h2>
@@ -1031,4 +1608,12 @@ export default function HumorExperimentationPage() {
       </div>
     </>
   );
-} 
+}
+
+{/* Add the spinning animation */}
+<style jsx global>{`
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`}</style> 
