@@ -1428,6 +1428,33 @@ export default function HumorExperimentationPage() {
               </div>
             ) : selectedScript?.videoUrl ? (
               <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative' }}>
+                {/* Publish Button Overlay */}
+                <button
+                  style={{
+                    position: 'absolute',
+                    top: 16,
+                    left: 16,
+                    zIndex: 2,
+                    background: '#fff',
+                    color: '#18181b',
+                    border: '1px solid #2563eb',
+                    borderRadius: 6,
+                    padding: '8px 18px',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+                    opacity: 0.95
+                  }}
+                  onClick={() => {
+                    if (selectedScript?.name) {
+                      window.location.href = `/publish?scriptName=${encodeURIComponent(selectedScript.name)}`;
+                    }
+                  }}
+                  title="Publish this video"
+                >
+                  Publish
+                </button>
                 <video 
                   src={selectedScript.videoUrl} 
                   controls 

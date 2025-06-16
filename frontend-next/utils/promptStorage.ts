@@ -13,6 +13,7 @@ export type PromptScriptRecord = {
   promptVersion: string;
   url?: string;
   videoUrl?: string;
+  description?: string;
 };
 
 const DATA_PATH = path.join(process.cwd(), 'data', 'prompt-scripts.json');
@@ -30,7 +31,8 @@ export async function addPromptScript(record: Omit<PromptScriptRecord, 'id' | 'c
         ...record,
         id: record.id,
         createdAt: all[idx].createdAt,
-        videoUrl: record.videoUrl || all[idx].videoUrl
+        videoUrl: record.videoUrl || all[idx].videoUrl,
+        description: record.description || all[idx].description
       };
       all[idx] = newRecord;
       updated = true;
@@ -46,7 +48,8 @@ export async function addPromptScript(record: Omit<PromptScriptRecord, 'id' | 'c
       createdAt: record.createdAt || new Date().toISOString(),
       promptVersion: record.promptVersion,
       url: record.url || undefined,
-      videoUrl: record.videoUrl || undefined
+      videoUrl: record.videoUrl || undefined,
+      description: record.description || undefined
     };
     all.push(newRecord);
   }
