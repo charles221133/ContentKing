@@ -25,7 +25,78 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        {children}
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          <main style={{ flex: 1 }}>
+            {children}
+          </main>
+          <footer
+            style={{
+              padding: '24px 0',
+              borderTop: '1px solid var(--foreground)',
+              textAlign: 'center',
+              fontSize: 16,
+              color: 'var(--foreground)',
+              background: 'var(--background)',
+            }}
+          >
+            <nav>
+              <a
+                href="/terms-of-service"
+                style={{
+                  margin: '0 16px',
+                  color: 'var(--foreground)',
+                  textDecoration: 'underline',
+                  opacity: 0.85,
+                }}
+              >
+                Terms of Service
+              </a>
+              <span style={{ color: 'var(--foreground)', opacity: 0.5 }}>|</span>
+              <a
+                href="/privacy-policy"
+                style={{
+                  margin: '0 16px',
+                  color: 'var(--foreground)',
+                  textDecoration: 'underline',
+                  opacity: 0.85,
+                }}
+              >
+                Privacy Policy
+              </a>
+              <span style={{ color: 'var(--foreground)', opacity: 0.5 }}>|</span>
+              <a
+                href="/contact-us"
+                style={{
+                  margin: '0 16px',
+                  color: 'var(--foreground)',
+                  textDecoration: 'underline',
+                  opacity: 0.85,
+                }}
+              >
+                Contact Us
+              </a>
+              <span style={{ color: 'var(--foreground)', opacity: 0.5 }}>|</span>
+              <a
+                href="/careers"
+                style={{
+                  margin: '0 16px',
+                  color: 'var(--foreground)',
+                  textDecoration: 'underline',
+                  opacity: 0.85,
+                }}
+              >
+                Careers
+              </a>
+            </nav>
+            <div style={{ marginTop: 8, fontSize: 14, opacity: 0.7 }}>
+              &copy; {new Date().getFullYear()} parodypipeline.com. All rights reserved.
+            </div>
+          </footer>
+        </div>
       </body>
     </html>
   );
