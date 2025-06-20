@@ -1,69 +1,73 @@
 // Simple file-based prompt script storage for MVP/demo purposes only.
 // Not for production use. All UI using this should use a dark theme by default.
-import { promises as fs } from 'fs';
-import path from 'path';
+import { createClient } from '@supabase/supabase-js';
+import { PromptScript } from '@/types/index';
 
-export type PromptScriptRecord = {
-  id: string;
-  name: string;
-  original: string;
-  userStyle: string;
-  rewritten: string;
-  createdAt: string;
-  promptVersion: string;
-  url?: string;
-  videoUrl?: string;
-};
+// Note: This client is safe to use in the browser
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-const DATA_PATH = path.join(process.cwd(), 'data', 'prompt-scripts.json');
+export async function listPromptScripts(userId: string): Promise<PromptScript[]> {
+  const { data, error } = await supabase
+    .from('scripts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
 
-export async function addPromptScript(record: Omit<PromptScriptRecord, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Promise<PromptScriptRecord> {
-  const all = await listPromptScripts();
-  let updated = false;
-  let newRecord: PromptScriptRecord | undefined = undefined;
-  if (record.id) {
-    // Try to update existing
-    const idx = all.findIndex(s => s.id === record.id);
-    if (idx !== -1) {
-      newRecord = {
-        ...all[idx],
-        ...record,
-        id: record.id,
-        createdAt: all[idx].createdAt,
-        videoUrl: record.videoUrl || all[idx].videoUrl
-      };
-      all[idx] = newRecord;
-      updated = true;
-    }
+  if (error) {
+    console.error('Error fetching scripts:', error);
+    throw new Error(error.message);
   }
-  if (!updated) {
-    newRecord = {
-      id: record.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: record.name || '',
-      original: record.original,
-      userStyle: record.userStyle,
-      rewritten: record.rewritten,
-      createdAt: record.createdAt || new Date().toISOString(),
-      promptVersion: record.promptVersion,
-      url: record.url || undefined,
-      videoUrl: record.videoUrl || undefined
+
+  return data || [];
+}
+
+export async function addPromptScript(script: Omit<PromptScript, 'id' | 'createdAt'> & { user_id: string }): Promise<PromptScript> {
+    const newScript = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        ...script,
+        created_at: new Date().toISOString(),
     };
-    all.push(newRecord);
-  }
-  await fs.writeFile(DATA_PATH, JSON.stringify(all, null, 2), 'utf-8');
-  return newRecord!;
+
+    const { data, error } = await supabase
+        .from('scripts')
+        .insert(newScript)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error adding script:', error);
+        throw new Error(error.message);
+    }
+
+    return data;
 }
 
-export async function listPromptScripts(): Promise<PromptScriptRecord[]> {
-  try {
-    const data = await fs.readFile(DATA_PATH, 'utf-8');
-    return JSON.parse(data) as PromptScriptRecord[];
-  } catch {
-    return [];
+export async function getPromptScript(id: string): Promise<PromptScript | null> {
+  const { data, error } = await supabase
+    .from('scripts')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+    console.error('Error fetching script:', error);
+    throw new Error(error.message);
   }
+
+  return data;
 }
 
-export async function findPromptScript(original: string, userStyle: string): Promise<PromptScriptRecord | undefined> {
-  const all = await listPromptScripts();
-  return all.find(r => r.original === original && r.userStyle === userStyle);
+export async function deletePromptScript(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('scripts')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting script:', error);
+    throw new Error(error.message);
+  }
 } 

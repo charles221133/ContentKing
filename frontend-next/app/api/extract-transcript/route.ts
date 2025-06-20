@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchTranscript } from 'youtube-transcript-plus';
+import { YoutubeTranscript } from 'youtube-transcript';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
 function normalizeYouTubeUrl(url: string): string {
   // Extract video ID from various YouTube URL formats
@@ -12,6 +14,13 @@ function normalizeYouTubeUrl(url: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to extract a transcript.' }, { status: 401 });
+  }
+
   try {
     const { url } = await req.json();
     if (!url || typeof url !== 'string') {

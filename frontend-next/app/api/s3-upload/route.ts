@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import AWS from 'aws-sdk';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
-// Configure AWS SDK with environment variables
-const s3 = new AWS.S3({
+const s3Client = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -10,45 +10,47 @@ const s3 = new AWS.S3({
   },
 });
 
-function isValidFileName(fileName: string): boolean {
-  // Only allow alphanumeric, dash, underscore, dot, and max 100 chars
-  return /^[\w\-.]{1,100}$/.test(fileName);
+function getContentType(fileName: string): string {
+    if (fileName.endsWith('.mp3')) return 'audio/mpeg';
+    if (fileName.endsWith('.mp4')) return 'video/mp4';
+    if (fileName.endsWith('.txt')) return 'text/plain';
+    return 'application/octet-stream';
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to upload a file.' }, { status: 401 });
+  }
+
   try {
-    const { fileName, fileContent, contentType } = await req.json();
-    if (!fileName || !fileContent) {
-      return new NextResponse(JSON.stringify({ error: 'Missing fileName or fileContent' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
-      });
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+
+    if (!file) {
+      return NextResponse.json({ error: 'BadRequest', message: 'No file found.' }, { status: 400 });
     }
-    if (!isValidFileName(fileName)) {
-      return new NextResponse(JSON.stringify({ error: 'Invalid fileName' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
-      });
-    }
-    // If fileContent is base64, decode it. Otherwise, treat as plain text.
-    const buffer = fileContent.startsWith('data:')
-      ? Buffer.from(fileContent.split(',')[1], 'base64')
-      : Buffer.from(fileContent, 'base64');
-    const params = {
-      Bucket: process.env.AWS_S3_BUCKET || '',
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const fileName = file.name;
+    const contentType = getContentType(fileName);
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: fileName,
       Body: buffer,
-      ContentType: contentType || 'application/octet-stream',
-    };
-    const result = await s3.upload(params).promise();
-    return new NextResponse(JSON.stringify({ message: 'File uploaded to S3!', url: result.Location }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
+      ContentType: contentType,
     });
-  } catch (error: any) {
-    return new NextResponse(JSON.stringify({ error: error.message || 'Upload failed' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
-    });
+
+    await s3Client.send(command);
+
+    const fileUrl = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+
+    return NextResponse.json({ success: true, url: fileUrl }, { status: 200 });
+
+  } catch (err: any) {
+    return NextResponse.json({ error: 'Failed to upload to S3', details: err?.message }, { status: 500 });
   }
 } 

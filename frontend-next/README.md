@@ -1,6 +1,11 @@
-# Next.js + TypeScript Project
+# parodypipeline.com
 
-This project is built with [Next.js](https://nextjs.org) and TypeScript, migrated from Create React App. It includes a backend API route for AWS S3 uploads.
+A platform for managing and organizing parody content.
+
+---
+
+## Project Overview
+A modern parody content management platform built with Next.js (TypeScript), featuring integrated backend API routes for file uploads, YouTube transcript extraction, and more.
 
 ## Getting Started
 
@@ -76,3 +81,14 @@ Response:
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Links
+
+https://developers.tiktok.com/app/7516355499843913734/sandbox/7516865562321733637
+
+- [Terms of Service](/terms-of-service)
+- [Privacy Policy](/privacy-policy)
+
+# Clone the repository
+ git clone <your-repo-url>
+ cd parodypipeline.com

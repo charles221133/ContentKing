@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import openai from '@/utils/openai';
 import { personalizeScriptPrompt } from '@/utils/prompts';
 import { findPromptScript, addPromptScript } from '@/utils/promptStorage';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
 // This API route is for script personalization using OpenAI. Any UI using this should use a dark theme by default.
 
 export async function POST(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to personalize a script.' }, { status: 401 });
+  }
+
   try {
     const { script, userStyle, force, newsNuggets } = await req.json();
     if (!script || typeof script !== 'string' || !userStyle || typeof userStyle !== 'string') {
