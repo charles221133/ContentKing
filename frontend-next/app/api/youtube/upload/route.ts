@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
 async function downloadVideoBuffer(videoUrl: string): Promise<Buffer> {
   const res = await fetch(videoUrl);
@@ -9,7 +10,14 @@ async function downloadVideoBuffer(videoUrl: string): Promise<Buffer> {
   return Buffer.from(arrayBuffer);
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to upload a video.' }, { status: 401 });
+  }
+
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;
@@ -18,14 +26,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Google OAuth environment variables not set.' }, { status: 500 });
   }
 
-  const body = await request.json();
+  const body = await req.json();
   const { videoUrl, title, description } = body;
   if (!videoUrl || !title) {
     return NextResponse.json({ error: 'Missing videoUrl or title.' }, { status: 400 });
   }
 
   // Get refresh token from cookie
-  const cookie = request.headers.get('cookie') || '';
+  const cookie = req.headers.get('cookie') || '';
   const match = cookie.match(/yt_refresh_token=([^;]+)/);
   if (!match) {
     return NextResponse.json({ error: 'No YouTube refresh token found. Please authenticate.' }, { status: 401 });

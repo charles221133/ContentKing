@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
 export async function GET(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to list voices.' }, { status: 401 });
+  }
+
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: 'Missing Heygen API key' }, { status: 500 });

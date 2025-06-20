@@ -1,86 +1,65 @@
-import React from "react";
+'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useUser } from '../context/UserContext';
+import styles from './page.module.css';
+import Image from 'next/image';
+import Link from 'next/link';
 
 export default function Home() {
+  const { user, loading } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  if (loading) {
+    return <div>Loading...</div>; // Or a spinner component
+  }
+  
+  if (user) {
+    return null; // Don't render anything while redirecting
+  }
+
   return (
     <div
       style={{
-        minHeight: "100vh",
-        width: "100vw",
-        position: "relative",
-        overflow: "hidden",
+        position: 'relative',
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
       }}
     >
-      <img
+      <Image
         src="/assets/images/landingPageBackground.png"
         alt="Landing Page Background"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100vw",
-          height: "100vh",
-          objectFit: "cover",
-          zIndex: 0,
-          pointerEvents: "none",
-          userSelect: "none",
-        }}
+        layout="fill"
+        objectFit="cover"
+        quality={100}
       />
       <div
         style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100vw",
-          height: "100vh",
-          zIndex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          justifyContent: "flex-start",
-          padding: "60px 0 0 60px",
+          position: 'absolute',
+          top: '5%',
+          left: '5%',
+          color: 'white',
+          textAlign: 'left',
         }}
       >
-        <h1 style={{ color: "#fff", fontSize: 56, fontWeight: 800, textShadow: "0 4px 32px #000", marginBottom: 24 }}>
-          Welcome to Parody Pipeline
-        </h1>
-        <p style={{ color: "#fff", fontSize: 24, margin: "0 0 40px 0", maxWidth: 600, textAlign: "left", textShadow: "0 2px 16px #000" }}>
-          Instantly turn YouTube videos into hilarious, personalized parody scripts and videos. AI-powered. Social-ready. Always original.
+        <h1 className={styles.title}>parodypipeline.com</h1>
+        <p className={styles.description}>
+          AI-powered tools to help you create, refine, and publish your parody video scripts.
         </p>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <a
-            href="/login"
-            style={{
-              background: "#fff",
-              color: "#111",
-              fontWeight: 700,
-              fontSize: 16,
-              padding: "10px 24px",
-              borderRadius: 8,
-              textDecoration: "none",
-              boxShadow: "0 2px 8px #0002",
-              border: "2px solid #38bdf8",
-              transition: "background 0.2s, color 0.2s",
-            }}
-          >
-            Login
-          </a>
-          <a
-            href="/signup"
-            style={{
-              background: "#38bdf8",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 16,
-              padding: "10px 24px",
-              borderRadius: 8,
-              textDecoration: "none",
-              boxShadow: "0 2px 8px #0002",
-              border: "2px solid #38bdf8",
-              transition: "background 0.2s, color 0.2s",
-            }}
-          >
-            Sign Up
-          </a>
+        <div style={{ marginTop: '20px' }}>
+          <Link href="/login" passHref>
+            <button className={styles.button}>Login</button>
+          </Link>
+          <Link href="/signup" passHref>
+            <button className={styles.button} style={{ marginLeft: '10px' }}>Sign Up</button>
+          </Link>
         </div>
       </div>
     </div>

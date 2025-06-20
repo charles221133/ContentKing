@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
+export async function GET(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to check video status.' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
   const videoId = searchParams.get('videoId');
 
   if (!videoId) {

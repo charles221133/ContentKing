@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
 // Remove cache
 // let newsCache: { newsStories: { headline: string; summary: string }[]; timestamp: number } | null = null;
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
 
 export async function GET(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to view the latest news.' }, { status: 401 });
+  }
+
   try {
     // Remove cache check
     // if (newsCache && Date.now() - newsCache.timestamp < CACHE_DURATION) {

@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
 export async function POST(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to generate a video.' }, { status: 401 });
+  }
+
   try {
     const { script, avatar_id, voice_id } = await req.json();
     if (!script || typeof script !== 'string' || !script.trim()) {
