@@ -15,67 +15,44 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { script, userStyle, force, newsNuggets } = await req.json();
-    if (!script || typeof script !== 'string' || !userStyle || typeof userStyle !== 'string') {
+    const { original, userStyle: user_style, scriptName, force } = await req.json();
+    if (!original || typeof original !== 'string' || !user_style || typeof user_style !== 'string') {
       return NextResponse.json({
         error: 'BadRequest',
-        message: 'Missing or invalid script or userStyle.',
-        status: 400,
-      }, { status: 400 });
-    }
-    if (!Array.isArray(newsNuggets) || newsNuggets.length !== 3 || newsNuggets.some(n => typeof n !== 'string' || !n.trim())) {
-      return NextResponse.json({
-        error: 'BadRequest',
-        message: 'newsNuggets must be an array of 3 non-empty strings.',
+        message: 'Missing or invalid original or userStyle.',
         status: 400,
       }, { status: 400 });
     }
 
     // Check for cached result unless force is true
     if (!force) {
-      const cached = await findPromptScript(script, userStyle);
+      const cached = await findPromptScript(original, user_style, user.id);
       if (cached) {
-        return NextResponse.json({
-          rewritten: cached.rewritten,
-          userStyle: cached.userStyle,
-          cached: true,
-          createdAt: cached.createdAt,
-          promptVersion: cached.promptVersion,
-        }, {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
-        });
+        return NextResponse.json(cached, { status: 200 });
       }
     }
 
-    // TODO: Get news nuggets from the API
-    const prompt = personalizeScriptPrompt.build({ script, userStyle, newsNuggets });
-    console.log('prompt', prompt);
+    const prompt = personalizeScriptPrompt.build({ script: original, userStyle: user_style, newsNuggets: [] });
+
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You are a creative scriptwriter and comedian.' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 1200,
-      temperature: 0.85,
+      model: 'gpt-4-turbo-preview',
+      messages: [{ role: 'user', content: prompt }],
     });
-    const rewritten = completion.choices[0]?.message?.content || '';
-    // Save new result
-    const saved = await addPromptScript({
-      name: '',
-      original: script,
-      userStyle,
+
+    const rewritten = completion.choices[0].message.content?.trim() || '';
+
+    const newScript = {
+      name: scriptName,
+      original,
+      user_style,
       rewritten,
-      promptVersion: personalizeScriptPrompt.version,
-    });
-    return NextResponse.json({
-      rewritten: saved.rewritten,
-      userStyle: saved.userStyle,
-      cached: false,
-      createdAt: saved.createdAt,
-      promptVersion: saved.promptVersion,
-    }, {
+      prompt_version: personalizeScriptPrompt.version,
+      user_id: user.id
+    };
+
+    const savedScript = await addPromptScript(newScript);
+
+    return NextResponse.json(savedScript, {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
     });

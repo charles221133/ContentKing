@@ -45,6 +45,23 @@ export async function addPromptScript(script: Omit<PromptScript, 'id' | 'created
     return data;
 }
 
+export async function findPromptScript(original: string, userStyle: string, userId: string): Promise<PromptScript | null> {
+  const { data, error } = await supabase
+    .from('scripts')
+    .select('*')
+    .eq('original', original)
+    .eq('user_style', userStyle)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error finding script:', error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
 export async function getPromptScript(id: string): Promise<PromptScript | null> {
   const { data, error } = await supabase
     .from('scripts')
