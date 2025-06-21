@@ -13,7 +13,17 @@ export default function RequireAuth({ children }: { children: React.ReactNode })
     }
   }, [user, loading, router]);
 
-  if (loading || !user) return null;
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <div>Loading...</div>
+      </div>
+    );
+  }
 
-  return <>{children}</>;
+  if (user) {
+    return <>{children}</>;
+  }
+
+  return null;
 } 
