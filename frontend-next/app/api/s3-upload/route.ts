@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
+  region: process.env.AWS_REGION!,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 });
 
@@ -18,39 +20,40 @@ function getContentType(fileName: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to upload a file.' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const { fileName, fileType } = await req.json();
 
-    if (!file) {
-      return NextResponse.json({ error: 'BadRequest', message: 'No file found.' }, { status: 400 });
+    if (!fileName || !fileType) {
+      return NextResponse.json({ error: 'fileName and fileType are required' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const fileName = file.name;
-    const contentType = getContentType(fileName);
-
     const command = new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: fileName,
-      Body: buffer,
-      ContentType: contentType,
+      Bucket: process.env.S3_BUCKET_NAME!,
+      Key: `${user.id}/${fileName}`,
+      ContentType: fileType,
     });
 
-    await s3Client.send(command);
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
-    const fileUrl = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-
-    return NextResponse.json({ success: true, url: fileUrl }, { status: 200 });
-
-  } catch (err: any) {
-    return NextResponse.json({ error: 'Failed to upload to S3', details: err?.message }, { status: 500 });
+    return NextResponse.json({ signedUrl, key: `${user.id}/${fileName}` });
+  } catch (error) {
+    console.error('Error creating signed URL', error);
+    return NextResponse.json({ error: 'Failed to create signed URL' }, { status: 500 });
   }
 } 

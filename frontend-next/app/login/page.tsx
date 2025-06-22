@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../utils/supabaseClient";
+import { createSupabaseBrowserClient } from "../../utils/supabaseClient";
 import { useUser } from "../../context/UserContext";
 
 export default function LoginPage() {
@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
     if (!userLoading && user) {
@@ -26,12 +27,17 @@ export default function LoginPage() {
     const form = e.target as HTMLFormElement;
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    
     if (error) {
+      console.error("Login failed:", error);
       setError(error.message);
+      setLoading(false);
     } else {
+      console.log("Login successful! Session data:", data);
       setSuccess(true);
+      // Force a router refresh to ensure the new session is picked up by server components/middleware
+      router.refresh(); 
     }
   }
 

@@ -1,0 +1,599 @@
+/* Styles for HumorExperimentationPage */
+/* We will populate this file in the next steps. */
+
+/* General Page and Container Styles */
+.pageContainer {
+  /* This class is for the top-level fragment, no specific styles needed unless for a wrapper div */
+}
+
+.controlsContainer {
+  max-width: 800px;
+  margin: 40px auto 8px auto;
+  padding: 0;
+  background: none;
+}
+
+.actionButton {
+  padding: 8px 16px;
+  font-size: 16px;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pasteButton {
+  background: #2563eb;
+  margin-bottom: 8px;
+}
+
+.generateVideoButton {
+  background: #2563eb;
+  margin-left: 8px;
+}
+
+.outputAvatarsButton {
+  background: #2563eb;
+  margin-left: 8px;
+}
+
+.errorSpan {
+  color: #f87171;
+  margin-left: 8px;
+}
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background: #23232a;
+  padding: 32px;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.5);
+  color: #f3f3f3;
+}
+
+.modalTitle {
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+.modalInput {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  background: #18181b;
+  color: #f3f3f3;
+  border: 1px solid #333;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.modalTextarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  background: #18181b;
+  color: #f3f3f3;
+  border: 1px solid #333;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.modalError {
+  color: #f87171;
+  margin-bottom: 8px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.modalButton {
+  padding: 8px 16px;
+  font-size: 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.modalButtonCancel {
+  background: #333;
+  color: #fff;
+}
+
+.modalButtonConfirm {
+  background: #2563eb;
+  color: #fff;
+}
+
+/* Script Loader Styles */
+.scriptLoaderContainer {
+  max-width: 800px;
+  margin: 0 auto 16px auto;
+  padding: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scriptLoaderLabel {
+  color: #fff;
+  font-weight: 500;
+  margin-right: 12px;
+}
+
+.scriptLoaderStatus {
+  color: #888;
+}
+
+.scriptLoaderSelect {
+  background: #23232a;
+  color: #f3f3f3;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 16px;
+  min-width: 300px;
+}
+
+.iconButton {
+  background: #23232a;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.deleteButton {
+  color: #f87171;
+  font-size: 20px;
+}
+
+.convertButton {
+  color: #22d3ee;
+  font-size: 18px;
+}
+
+.debugButton {
+  color: #fff;
+  font-size: 18px;
+}
+
+/* Rewrite Modal Specific */
+.rewriteModalContent {
+  max-width: 420px;
+}
+
+.rewriteModalLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.rewriteModalInputContainer {
+  margin-bottom: 18px;
+}
+
+/* News Section Styles */
+.newsContainer {
+  max-width: 800px;
+  margin: 0 auto 16px auto;
+  padding: 0;
+  background: none;
+}
+
+.newsWrapper {
+  background: #23232a;
+  color: #f3f3f3;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  margin-top: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.newsHeader {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.newsToggleButton {
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: #f3f3f3;
+  border: none;
+  padding: 14px 18px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  flex: 1;
+}
+
+.newsClearButton {
+  background: none;
+  color: #f3f3f3;
+  border: none;
+  padding: 0;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.newsPanel {
+  padding: 16px 24px;
+  border-top: 1px solid #333;
+  background: #18181b;
+}
+
+.newsLoading {
+  color: #38bdf8;
+  font-size: 16px;
+}
+
+.newsError {
+  color: #f87171;
+  font-size: 16px;
+}
+
+.newsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #a3e635;
+  font-size: 16px;
+}
+
+.newsListItem {
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.newsCheckbox {
+  margin-top: 4px;
+}
+
+.newsHeadline {
+  font-weight: 700;
+  color: #f3f3f3;
+  margin-bottom: 4;
+}
+
+.newsSummary {
+  color: #a3a3a3;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.newsEmpty {
+  color: #888;
+  font-size: 16px;
+}
+
+.newsCachedStatus {
+  color: #38bdf8;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* Delete Confirmation Modal */
+.deleteConfirmContent {
+  text-align: center;
+}
+
+.deleteConfirmText {
+  margin-bottom: 24px;
+}
+
+.deleteConfirmActions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.deleteConfirmButton {
+  padding: 8px 24px;
+  font-size: 16px;
+  border: none;
+  border-radius: 6px;
+}
+
+.deleteConfirmButtonNo {
+  background: #333;
+  color: #fff;
+}
+
+.deleteConfirmButtonYes {
+  background: #ef4444;
+  color: #fff;
+}
+
+
+/* Main Experimentation UI */
+.mainContainer {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px;
+  background: #18181b;
+  color: #f3f3f3;
+  border-radius: 16px;
+  min-height: 600px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.4);
+}
+
+.mainTitle {
+  color: #fff;
+  margin-bottom: 24px;
+}
+
+.sourceUrlContainer {
+  margin-bottom: 16px;
+}
+
+.sourceUrlLabel {
+  color: #a3e635;
+  font-weight: 500;
+}
+
+.sourceUrlLink {
+  color: #38bdf8;
+  text-decoration: underline;
+}
+
+/* Video Section */
+.videoContainer {
+  margin-bottom: 32px;
+}
+
+.videoLoadingContainer {
+  width: 100%; 
+  aspect-ratio: 16/9; 
+  background: #23232a; 
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.spinner {
+  width: 48px; 
+  height: 48px; 
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #2563eb;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.videoStatusText {
+  color: #f3f3f3;
+  font-size: 16px;
+}
+
+.videoThumbnail {
+  max-width: 100%; 
+  max-height: 200px; 
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+.videoPlayerContainer {
+  width: 100%;
+  aspect-ratio: 16/9;
+  position: relative;
+}
+
+.publishVideoButton {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  background: #fff;
+  color: #18181b;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  opacity: 0.95;
+}
+
+.videoPlayer {
+  width: 100%; 
+  height: 100%;
+  border-radius: 8px; 
+  background: #000;
+  object-fit: contain;
+}
+
+.videoError {
+  color: #f87171; 
+  margin-top: 8px; 
+  padding: 12px; 
+  background: #23232a; 
+  border-radius: 8px;
+}
+
+/* Paragraphs Section */
+.paragraphsContainer {
+  margin-bottom: 32px;
+}
+
+.paragraphsTitle {
+  color: #fff;
+  font-size: 20px;
+}
+
+.paragraphsList {
+  padding-left: 24px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.paragraphListItem {
+  list-style: decimal;
+  color: #d1d5db;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.paragraph {
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: background 0.2s, border 0.2s;
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.paragraphUnselected {
+  background: #23232a;
+  color: #f3f3f3;
+  font-weight: 400;
+}
+
+.paragraphSelected {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.15);
+}
+
+.removeParagraphButton {
+  margin-left: 12px;
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.paragraphActions {
+  margin: 8px 0 8px 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comedianSelect {
+  background: #23232a;
+  color: #f3f3f3;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 15px;
+  min-width: 160px;
+}
+
+.generateVariantButton {
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.generateVariantButtonActive {
+  background: #2563eb;
+}
+
+.generateVariantButtonLoading {
+  background: #333;
+}
+
+
+.deselectButton {
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.variantsList {
+  margin: 4px 0 12px 36px;
+  padding: 0;
+  list-style: disc;
+  color: #a3e635;
+  font-size: 15px;
+}
+
+.variantListItem {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variantText {
+  flex: 1;
+}
+
+.saveVariantButton {
+  background: #38bdf8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.95;
+}
+
+.statusMessage {
+  margin-left: 36px;
+  font-size: 14px;
+}
+
+.errorMessage {
+  color: #f87171;
+}
+
+.loadingMessage {
+  color: #888;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+} 

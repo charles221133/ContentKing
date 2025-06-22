@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { Readable } from 'stream';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
+
+const OAuth2 = google.auth.OAuth2;
 
 async function downloadVideoBuffer(videoUrl: string): Promise<Buffer> {
   const res = await fetch(videoUrl);
@@ -11,11 +14,21 @@ async function downloadVideoBuffer(videoUrl: string): Promise<Buffer> {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
+
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to upload a video.' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -40,7 +53,7 @@ export async function POST(req: NextRequest) {
   }
   const refreshToken = decodeURIComponent(match[1]);
 
-  const oauth2Client = new google.auth.OAuth2(
+  const oauth2Client = new OAuth2(
     clientId,
     clientSecret,
     redirectUri

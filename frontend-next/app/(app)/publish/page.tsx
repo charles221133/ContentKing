@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { PromptScript } from '@/types';
+import apiClient from '@/utils/apiClient';
 
 const PLATFORMS = [
   { key: 'youtube', label: 'YouTube' },
@@ -21,18 +22,31 @@ export default function PublishPage() {
   useEffect(() => {
     async function loadScripts() {
       try {
-        const res = await fetch('/api/list-saved-scripts');
-        if (!res.ok) {
-          throw new Error('Failed to fetch scripts.');
-        }
-        const data = await res.json();
+        const res = await apiClient.get('/list-saved-scripts');
+        // Axios wraps the response in a `data` object
+        const data = res.data;
         setScripts(data.scripts || []);
+        
         if (data.scripts && data.scripts.length > 0) {
-          setSelectedScript(data.scripts[0]);
-          setStatus(data.scripts[0].status || {});
+          // Re-implement the localStorage logic to get the last selected script
+          const lastScriptId = localStorage.getItem('lastPublishScriptId');
+          const lastScript = data.scripts.find((s: PromptScript) => s.id === lastScriptId);
+          
+          if (lastScript) {
+            setSelectedScript(lastScript);
+            setStatus(lastScript.status || {});
+          } else {
+            // Default to the first script if none was saved
+            setSelectedScript(data.scripts[0]);
+            setStatus(data.scripts[0].status || {});
+          }
         }
       } catch (e: any) {
-        setError(e.message);
+        // The interceptor will handle 401s. We only need to catch other errors.
+        if (e.response?.status !== 401) {
+          console.error("Error fetching scripts for Publish page:", e);
+          setError("Failed to load scripts. See console for details.");
+        }
       } finally {
         setLoading(false);
       }
@@ -47,6 +61,10 @@ export default function PublishPage() {
       setSelectedScript(script);
       setStatus(script.status || {});
       setYoutubeVideoId(null); // Reset video ID when changing scripts
+      // Save the selected script ID to localStorage
+      if (script.id) {
+        localStorage.setItem('lastPublishScriptId', script.id);
+      }
     }
   };
 
@@ -57,39 +75,25 @@ export default function PublishPage() {
       setPublishing((prev) => ({ ...prev, [platform]: true }));
       // Try to upload, if not authenticated, start OAuth
       const upload = async () => {
-        const res = await fetch('/api/youtube/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoUrl: selectedScript.video_url, // Assuming video_url exists
+        try {
+          const res = await apiClient.post('/youtube/upload', {
+            videoUrl: selectedScript.video_url,
             title: selectedScript.name || 'Untitled Video',
             description: selectedScript.description || ''
-          })
-        });
-        if (res.status === 401) {
-          // Not authenticated, start OAuth
-          const popup = window.open('/api/youtube/auth', 'ytAuth', 'width=500,height=700');
-          return new Promise<void>((resolve) => {
-            const listener = (event: any) => {
-              if (event.data && event.data.youtubeAuth) {
-                window.removeEventListener('message', listener);
-                popup?.close();
-                upload().then(resolve);
-              }
-            };
-            window.addEventListener('message', listener);
           });
-        } else if (res.ok) {
-          const data = await res.json();
+          const data = res.data;
           setStatus((prev) => ({ ...prev, [platform]: 'Published' }));
           setYoutubeVideoId(data.videoId);
-        } else {
-          setStatus((prev) => ({ ...prev, [platform]: 'Failed' }));
+        } catch (err: any) {
+          // The interceptor will handle 401s automatically
+          if (err.response?.status !== 401) {
+            setStatus((prev) => ({ ...prev, [platform]: 'Failed' }));
+          }
+        } finally {
+          setPublishing((prev) => ({ ...prev, [platform]: false }));
         }
-        setPublishing((prev) => ({ ...prev, [platform]: false }));
       };
       await upload();
-      setPublishing((prev) => ({ ...prev, [platform]: false }));
       return;
     }
     // Simulate for other platforms
@@ -127,7 +131,7 @@ export default function PublishPage() {
               style={{ width: '100%', padding: '8px 12px', borderRadius: 6, background: '#2d3748', color: 'white', border: '1px solid #4a5568' }}
             >
               {scripts.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id!}>{s.name}</option>
               ))}
             </select>
           </div>

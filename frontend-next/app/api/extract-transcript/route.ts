@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchTranscript } from 'youtube-transcript-plus';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+
+const EXTRACT_TRANSCRIPT_PROMPT = `
+Summarize the following YouTube transcript into a concise script format.
+Focus on the main points and dialogues. Ignore ads, self-promotions, and off-topic chatter.
+The output should be a clean, readable script.
+
+Transcript:
+{transcript}
+`;
 
 function normalizeYouTubeUrl(url: string): string {
   // Extract video ID from various YouTube URL formats
@@ -14,72 +26,48 @@ function normalizeYouTubeUrl(url: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to extract a transcript.' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { url } = await req.json();
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json({
-        error: 'BadRequest',
-        message: 'Missing or invalid YouTube URL.',
-        status: 400,
-      }, { status: 400 });
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
+
     const normalizedUrl = normalizeYouTubeUrl(url);
-    const videoIdMatch = normalizedUrl.match(/[?&]v=([^&#]+)/) || normalizedUrl.match(/youtu\.be\/([^?&#]+)/);
-    const videoId = videoIdMatch ? videoIdMatch[1] : normalizedUrl;
-    // Debug logging
-    console.log('[extract-transcript] Original URL:', url);
-    console.log('[extract-transcript] Normalized URL:', normalizedUrl);
-    console.log('[extract-transcript] Video ID:', videoId);
-    const transcriptArr = await fetchTranscript(normalizedUrl, {
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
-    });
-    console.log('[extract-transcript] transcriptArr:', transcriptArr);
-    if (!transcriptArr || transcriptArr.length === 0) {
-      return NextResponse.json({
-        error: 'TranscriptNotFound',
-        message: 'No transcript found for this video.',
-        status: 404,
-      }, { status: 404 });
+    const transcript = await YoutubeTranscript.fetchTranscript(normalizedUrl);
+
+    if (!transcript || transcript.length === 0) {
+      return NextResponse.json({ error: 'Could not extract transcript or transcript is empty' }, { status: 404 });
     }
-    const transcriptText = transcriptArr.map((seg: { text: string }) => seg.text.trim()).join(' ');
-    const paragraphs = transcriptArr.map((seg: { text: string }) => seg.text.trim());
-    const start = transcriptArr[0]?.offset || 0;
-    const last = transcriptArr[transcriptArr.length - 1];
-    const end = last ? (last.offset + last.duration) : 0;
-    const language = transcriptArr[0]?.lang || 'unknown';
-    const metadata = {
-      duration: end - start,
-      language,
-      extractedAt: new Date().toISOString(),
-    };
-    return NextResponse.json({
-      videoId,
-      transcript: transcriptText,
-      paragraphs,
-      metadata,
-    });
+
+    const fullTranscript = transcript.map(item => item.text).join(' ');
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = EXTRACT_TRANSCRIPT_PROMPT.replace('{transcript}', fullTranscript);
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const script = response.text();
+
+    return NextResponse.json({ script: script, originalTranscript: fullTranscript });
   } catch (err: any) {
-    let status = 500;
-    let errorType = 'InternalServerError';
-    let message = 'Failed to fetch transcript.';
-    if (err && err.message && err.message.includes('Could not find')) {
-      status = 404;
-      errorType = 'TranscriptNotFound';
-      message = err.message;
-    }
-    console.error('[extract-transcript] Error:', err);
-    return NextResponse.json({
-      error: errorType,
-      message,
-      status,
-      details: err && err.message ? err.message : undefined,
-    }, { status });
+    console.error('Error extracting transcript:', err);
+    return NextResponse.json({ error: 'Failed to extract transcript', details: err?.message }, { status: 500 });
   }
 } 

@@ -5,6 +5,10 @@
 // All UI uses a dark theme by default.
 "use client";
 import React, { useState, useEffect } from "react";
+import apiClient from "@/utils/apiClient";
+import styles from './HumorExperimentation.module.css';
+import { stripTimestamps } from "@/utils/textUtils";
+import { createVideoRequestBody } from "@/utils/videoGenerator";
 
 const DUMMY_SCRIPT = `This is the first paragraph of the script.
 Here is the second paragraph, which is a bit longer and more interesting.
@@ -27,6 +31,11 @@ const COMEDIAN_LIST = [
   "Joan Rivers", "George Carlin", "Richard Pryor", "Mindy Kaling", "Chelsea Handler",
   "Fireship", "Norm Macdonald", "Tig Notaro", "Demetri Martin", "Ronny Chieng", "Daniel Tosh",
 ];
+
+// --- Hardcoded values for video generation ---
+// TODO: Replace these with the correct IDs.
+const HARDCODED_AVATAR_ID = "YOUR_AVATAR_ID_HERE";
+const HARDCODED_VOICE_ID = "YOUR_VOICE_ID_HERE";
 
 // Utility to highlight <joke>...</joke> tags in text
 function highlightJokeTags(text: string) {
@@ -79,6 +88,8 @@ export default function HumorExperimentationPage() {
   const [videoStatus, setVideoStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
   const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
   const [videoGif, setVideoGif] = useState<string | null>(null);
+  // State for each script's video generation status
+  const [videoState, setVideoState] = useState<{ [key: string]: { generating: boolean; error: string | null; videoId: string | null; status: string; thumbnailUrl: string | null; videoUrl: string | null } }>({});
   // Add state and handler for Output Avatars button
   const [avatarsLoading, setAvatarsLoading] = useState(false);
   const [avatarsError, setAvatarsError] = useState<string | null>(null);
@@ -98,12 +109,12 @@ export default function HumorExperimentationPage() {
 
   // Fetch saved scripts on mount
   useEffect(() => {
-    setSavedScriptsLoading(true);
-    fetch("/api/list-saved-scripts")
-      .then(res => res.json())
-      .then(data => {
+    async function fetchScripts() {
+      setSavedScriptsLoading(true);
+      try {
+        const response = await apiClient.get('/list-saved-scripts');
+        const data = response.data;
         setSavedScripts(data.scripts || []);
-        setSavedScriptsLoading(false);
         // Try to load last selected script from localStorage
         const lastId = typeof window !== 'undefined' ? localStorage.getItem('lastSelectedScriptId') : null;
         if (lastId && data.scripts) {
@@ -112,11 +123,17 @@ export default function HumorExperimentationPage() {
             setSelectedScript(found);
           }
         }
-      })
-      .catch(err => {
-        setSavedScriptsError("Failed to load saved scripts");
+      } catch (err: any) {
+        // The interceptor will handle 401s. We only log other errors here.
+        console.error("Error fetching scripts:", err); // Log the full error
+        if (err.response?.status !== 401) {
+          setSavedScriptsError("Failed to load saved scripts. See console for details.");
+        }
+      } finally {
         setSavedScriptsLoading(false);
-      });
+      }
+    }
+    fetchScripts();
   }, []);
 
   // Save selected script id to localStorage whenever it changes
@@ -174,26 +191,20 @@ export default function HumorExperimentationPage() {
     try {
       const comedian = selectedComedian[idx] || "Fireship";
       // Request 4 variants in a single backend call
-      const res = await fetch("/api/personalize-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          script: paragraphs[idx],
-          userStyle: comedian,
-          force: true,
-          newsNuggets: checkedNewsHeadlines
-        })
+      const res = await apiClient.post("/personalize-script", {
+        script: paragraphs[idx],
+        userStyle: comedian,
+        force: true,
+        newsNuggets: checkedNewsHeadlines
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to generate variant");
-      }
-      const data = await res.json();
+      const data = res.data;
       // Split the response into variants by ---
       const variantsArr = (data.rewritten || "").split(/\n\s*-{3,}\s*\n/).map((s: string) => s.trim()).filter(Boolean);
       setVariants(v => ({ ...v, [idx]: variantsArr.length ? variantsArr : [data.rewritten || "No variant returned"] }));
     } catch (err: any) {
-      setErrorIdx(e => ({ ...e, [idx]: err.message || "Unknown error" }));
+      if ((err as any).response?.status !== 401) {
+        setErrorIdx(e => ({ ...e, [idx]: err.message || "Unknown error" }));
+      }
     } finally {
       setLoadingIdx(null);
     }
@@ -201,43 +212,24 @@ export default function HumorExperimentationPage() {
 
   // Save a variant as the new paragraph, persist, and clear experiments
   const handleSaveVariant = async (idx: number, variant: string) => {
-    // Replace paragraph in script
-    const arr = paragraphsOverride || scriptText.split("\n").filter((p: string) => p.trim().length > 0);
-    const newParagraphs = arr.map((p: string, i: number) => (i === idx ? variant : p));
-    const newScript = newParagraphs.join("\n");
+    // This is a simplified save. A real implementation would be more robust.
+    const newParagraphs = [...paragraphs];
+    newParagraphs[idx] = variant;
     setParagraphsOverride(newParagraphs);
-    setVariants(v => ({ ...v, [idx]: [] }));
-    // Persist to backend if a script is selected
-    if (selectedScript?.id) {
-      const saveRes = await fetch("/api/save-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: selectedScript.id,
-          createdAt: selectedScript.createdAt,
-          name: selectedScript.name,
-          url: selectedScript.url,
-          original: newScript,
-          userStyle: selectedScript.userStyle,
-          rewritten: selectedScript.rewritten,
-          promptVersion: selectedScript.promptVersion
-        })
-      });
-      const savedScript = await saveRes.json();
-      // Refresh saved scripts and update selectedScript
-      setSavedScriptsLoading(true);
-      fetch("/api/list-saved-scripts")
-        .then(res => res.json())
-        .then(data => {
-          setSavedScripts(data.scripts || []);
-          setSavedScriptsLoading(false);
-          const found = (data.scripts || []).find((s: any) => s.id === savedScript.id);
-          setSelectedScript(found || savedScript);
-        })
-        .catch(err => {
-          setSavedScriptsError("Failed to load saved scripts");
-          setSavedScriptsLoading(false);
-        });
+    setSelectedParagraphIdx(null);
+
+    // Save the full updated script
+    if (selectedScript) {
+      const updatedScript = {
+        ...selectedScript,
+        rewritten: newParagraphs.join('\n\n'),
+      };
+      try {
+        await apiClient.post('/save-script', { script: updatedScript });
+        setSelectedScript(updatedScript); // Update local state
+      } catch (err) {
+        console.error("Failed to save script after updating variant", err);
+      }
     }
   };
 
@@ -247,61 +239,27 @@ export default function HumorExperimentationPage() {
   // Handler for importing from YouTube
   const handleImportFromYouTube = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!youtubeUrl) return;
     setYoutubeImportLoading(true);
     setYoutubeImportError(null);
+    setParagraphsOverride(null);
     try {
-      console.log('Importing YouTube URL:', youtubeUrl);
-      const res = await fetch("/api/extract-transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: youtubeUrl })
-      });
-      const data = await res.json();
-      console.log('API response:', data);
-      if (!res.ok) {
-        setYoutubeImportError(data.message || "Failed to extract transcript.");
-        console.error('API error:', data.message || data);
-      } else {
-        // Save the new script to the backend
-        const saveRes = await fetch("/api/save-script", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            original: data.transcript,
-            userStyle: "",
-            rewritten: "",
-            promptVersion: "youtube-import"
-          })
-        });
-        const savedScript = await saveRes.json();
-        if (!saveRes.ok) {
-          setYoutubeImportError(savedScript.message || "Failed to save script.");
-          console.error('Save script error:', savedScript.message || savedScript);
-        } else {
-          // Refresh saved scripts and select the new one
-          setSavedScriptsLoading(true);
-          fetch("/api/list-saved-scripts")
-            .then(res => res.json())
-            .then(data => {
-              setSavedScripts(data.scripts || []);
-              setSavedScriptsLoading(false);
-              const found = (data.scripts || []).find((s: any) => s.id === savedScript.id);
-              setSelectedScript(found || savedScript);
-            })
-            .catch(err => {
-              setSavedScriptsError("Failed to load saved scripts");
-              setSavedScriptsLoading(false);
-            });
-          setSelectedParagraphIdx(null);
-          setVariants({});
-          setErrorIdx({});
-          setYoutubeUrl("");
-          console.log('Loaded and saved new script:', savedScript);
-        }
-      }
+      const res = await apiClient.post('/extract-transcript', { youtubeUrl });
+      const data = res.data;
+      const newScript = {
+        id: data.id,
+        name: data.title || 'New YouTube Transcript',
+        original: data.transcript,
+        rewritten: '',
+        url: youtubeUrl,
+      };
+      // Add to the top of the list and select it
+      setSavedScripts(prev => [newScript, ...prev]);
+      setSelectedScript(newScript);
     } catch (err: any) {
-      setYoutubeImportError(err.message || "Unknown error");
-      console.error('Fetch error:', err);
+      if (err.response?.status !== 401) {
+        setYoutubeImportError(err.response?.data?.error || "Failed to import transcript.");
+      }
     } finally {
       setYoutubeImportLoading(false);
     }
@@ -312,96 +270,54 @@ export default function HumorExperimentationPage() {
     if (!selectedScript?.id) return;
     setDeleteLoading(true);
     try {
-      await fetch(`/api/delete-script?id=${encodeURIComponent(selectedScript.id)}`, { method: 'DELETE' });
-      // Refresh saved scripts
-      setSavedScriptsLoading(true);
-      fetch("/api/list-saved-scripts")
-        .then(res => res.json())
-        .then(data => {
-          setSavedScripts(data.scripts || []);
-          setSavedScriptsLoading(false);
-          // If the deleted script was selected, clear selection
-          if (selectedScript && (!data.scripts || !data.scripts.find((s: any) => s.id === selectedScript.id))) {
-            setSelectedScript(null);
-            setSelectedParagraphIdx(null);
-            setVariants({});
-            setErrorIdx({});
-          }
-        })
-        .catch(err => {
-          setSavedScriptsError("Failed to load saved scripts");
-          setSavedScriptsLoading(false);
-        });
+      await apiClient.post('/delete-script', { id: selectedScript.id });
+      setSavedScripts(prev => prev.filter(s => s.id !== selectedScript.id));
+      setSelectedScript(null);
+      setShowDeleteConfirm(false);
+    } catch (err: any) {
+      console.error("Failed to delete script", err);
     } finally {
       setDeleteLoading(false);
-      setShowDeleteConfirm(false);
     }
   };
 
   // State for OpenAI conversion
   const handleConvertScript = () => {
-    if (!selectedScript?.id || selectedScript.rewritten) return;
-    // Set up modal defaults
-    const wordCount = selectedScript.original.split(/\s+/).filter(Boolean).length;
-    setRewriteLength(wordCount);
-    setRewriteStyle('Fireship');
-    setRewriteError(null);
+    if (selectedScript) {
+      const scriptText = selectedScript.rewritten || selectedScript.original || '';
+      // Calculate word count by splitting on whitespace
+      const wordCount = scriptText.trim().split(/\s+/).filter(Boolean).length;
+      setRewriteLength(wordCount);
+    }
     setShowRewriteModal(true);
   };
 
   const handleRewriteSubmit = async () => {
-    if (!selectedScript?.id || selectedScript.rewritten) return;
+    if (!selectedScript) return;
     setRewriteLoading(true);
     setRewriteError(null);
     try {
-      // Call OpenAI API to rewrite the script with style and length
-      const res = await fetch('/api/personalize-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: selectedScript.original, userStyle: rewriteStyle, length: rewriteLength })
+      const res = await apiClient.post('/personalize-script', {
+        script: selectedScript.original,
+        userStyle: rewriteStyle,
+        force: true,
+        newsNuggets: [],
       });
-      const data = await res.json();
-      if (!res.ok || !data.rewritten) {
-        setRewriteError(data.message || data.error || 'Failed to convert script.');
-        return;
-      }
-      // Save the rewritten script, overwriting the old one
-      const saveRes = await fetch('/api/save-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: selectedScript.id,
-          createdAt: selectedScript.createdAt,
-          name: selectedScript.name,
-          url: selectedScript.url,
-          original: selectedScript.original,
-          userStyle: rewriteStyle,
-          rewritten: data.rewritten,
-          promptVersion: data.promptVersion || 'openai-convert'
-        })
-      });
-      const savedScript = await saveRes.json();
-      if (!saveRes.ok) {
-        setRewriteError(savedScript.message || 'Failed to save converted script.');
-        return;
-      }
-      // Refresh saved scripts and select the updated one
-      setSavedScriptsLoading(true);
-      fetch('/api/list-saved-scripts')
-        .then(res => res.json())
-        .then(data => {
-          setSavedScripts(data.scripts || []);
-          setSavedScriptsLoading(false);
-          const found = (data.scripts || []).find((s: any) => s.id === savedScript.id);
-          setSelectedScript(found || savedScript);
-        })
-        .catch(err => {
-          setSavedScriptsError('Failed to load saved scripts');
-          setSavedScriptsLoading(false);
-        });
+      const data = res.data;
+      const updatedScript = {
+        ...selectedScript,
+        rewritten: data.script,
+        user_style: rewriteStyle,
+      };
+      // Update script in main list
+      setSavedScripts(prev => prev.map(s => s.id === data.savedScriptId ? updatedScript : s));
+      // Update selected script
+      setSelectedScript(updatedScript);
       setShowRewriteModal(false);
     } catch (err: any) {
-      setRewriteError(err.message || 'Unknown error');
+      if (err.response?.status !== 401) {
+        setRewriteError(err.response?.data?.error || "Failed to rewrite script.");
+      }
     } finally {
       setRewriteLoading(false);
     }
@@ -409,65 +325,40 @@ export default function HumorExperimentationPage() {
 
   // Handler for saving pasted transcript
   const handlePasteTranscriptSave = async () => {
-    if (!pasteName.trim()) {
-      setPasteError("Name cannot be empty.");
-      return;
-    }
     if (!pastedTranscript.trim()) {
       setPasteError("Transcript cannot be empty.");
       return;
     }
+    if (!pasteName.trim()) {
+      setPasteError("Name cannot be empty.");
+      return;
+    }
     setPasteLoading(true);
     setPasteError(null);
-    try {
-      // Clean transcript: remove leading timestamps from each line
-      const cleanedTranscript = pastedTranscript
-        .split('\n')
-        .map(line => line.replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*/, '').trim())
-        .filter(line => line.length > 0)
-        .join('\n');
 
-      const saveRes = await fetch("/api/save-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: pasteName,
-          url: pasteUrl,
-          original: cleanedTranscript,
-          userStyle: "",
-          rewritten: "",
-          promptVersion: "manual-paste"
-        })
-      });
-      const savedScript = await saveRes.json();
-      if (!saveRes.ok) {
-        setPasteError(savedScript.message || "Failed to save script.");
-      } else {
-        // Refresh saved scripts and select the new one
-        setSavedScriptsLoading(true);
-        fetch("/api/list-saved-scripts")
-          .then(res => res.json())
-          .then(data => {
-            setSavedScripts(data.scripts || []);
-            setSavedScriptsLoading(false);
-            const found = (data.scripts || []).find((s: any) => s.id === savedScript.id);
-            setSelectedScript(found || savedScript);
-          })
-          .catch(err => {
-            setSavedScriptsError("Failed to load saved scripts");
-            setSavedScriptsLoading(false);
-          });
-        setSelectedParagraphIdx(null);
-        setVariants({});
-        setErrorIdx({});
-        setShowPasteModal(false);
-        setPastedTranscript("");
-        setPasteName("");
-        setPasteUrl("");
-        setParagraphsOverride(null);
-      }
+    // Regex to remove timestamps like 0:00 or 0:00:00 from the start of lines
+    const cleanedTranscript = pastedTranscript.replace(/^\s*(\d{1,2}:)?\d{1,2}:\d{2}\.?\d*\s*/gm, '');
+
+    const newScript = {
+      id: `pasted-${Date.now()}`,
+      name: pasteName || 'Pasted Transcript',
+      original: cleanedTranscript,
+      rewritten: '',
+      url: pasteUrl || '',
+    };
+    try {
+      const res = await apiClient.post('/save-script', { script: newScript });
+      const savedScript = res.data.script;
+      setSavedScripts(prev => [savedScript, ...prev]);
+      setSelectedScript(savedScript);
+      setShowPasteModal(false);
+      setPastedTranscript("");
+      setPasteName("");
+      setPasteUrl("");
     } catch (err: any) {
-      setPasteError(err.message || "Unknown error");
+      if (err.response?.status !== 401) {
+        setPasteError(err.response?.data?.error || "Failed to save transcript.");
+      }
     } finally {
       setPasteLoading(false);
     }
@@ -475,43 +366,25 @@ export default function HumorExperimentationPage() {
 
   // Remove paragraph and persist to backend
   const handleRemoveParagraph = async (idx: number) => {
-    const arr = paragraphsOverride || scriptText.split("\n").filter((p: string) => p.trim().length > 0);
-    const newParagraphs = arr.filter((_: unknown, i: number) => i !== idx);
-    const newScript = newParagraphs.join("\n");
+    const newParagraphs = paragraphs.filter((_: string, i: number) => i !== idx);
     setParagraphsOverride(newParagraphs);
-    // Persist to backend if a script is selected
-    if (selectedScript?.id) {
-      const saveRes = await fetch("/api/save-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: selectedScript.id,
-          createdAt: selectedScript.createdAt,
-          name: selectedScript.name,
-          url: selectedScript.url,
-          original: newScript,
-          userStyle: selectedScript.userStyle,
-          rewritten: selectedScript.rewritten,
-          promptVersion: selectedScript.promptVersion
-        })
-      });
-      const savedScript = await saveRes.json();
-      // Refresh saved scripts and update selectedScript
-      setSavedScriptsLoading(true);
-      fetch("/api/list-saved-scripts")
-        .then(res => res.json())
-        .then(data => {
-          setSavedScripts(data.scripts || []);
-          setSavedScriptsLoading(false);
-          const found = (data.scripts || []).find((s: any) => s.id === savedScript.id);
-          setSelectedScript(found || savedScript);
-        })
-        .catch(err => {
-          setSavedScriptsError("Failed to load saved scripts");
-          setSavedScriptsLoading(false);
-        });
-      // Deselect paragraph if it was removed
-      if (selectedParagraphIdx === idx) setSelectedParagraphIdx(null);
+    setVariants(v => {
+      const newV = { ...v };
+      delete newV[idx];
+      return newV;
+    });
+
+    if (selectedScript) {
+      const updatedScript = {
+        ...selectedScript,
+        rewritten: newParagraphs.join('\n\n')
+      };
+      try {
+        await apiClient.post('/save-script', { script: updatedScript });
+        setSelectedScript(updatedScript);
+      } catch (err) {
+        console.error("Failed to save script after removing paragraph", err);
+      }
     }
   };
 
@@ -527,22 +400,27 @@ export default function HumorExperimentationPage() {
       } catch {}
     }
     const now = Date.now();
-    if (parsed && Array.isArray(parsed.news) && parsed.timestamp && now - parsed.timestamp < 8 * 60 * 60 * 1000) {
+    // Use cache only if it's valid, not expired, AND contains stories
+    if (parsed && Array.isArray(parsed.news) && parsed.news.length > 0 && parsed.timestamp && now - parsed.timestamp < 8 * 60 * 60 * 1000) {
       setNewsHeadlines(parsed.news);
       setNewsCached(true);
       setNewsLoading(false);
     } else {
+      // Otherwise, fetch fresh news
       setNewsLoading(true);
       setNewsError(null);
-      fetch('/api/latest-news')
-        .then(res => res.json())
-        .then(data => {
-          const news = Array.isArray(data.newsStories) ? data.newsStories : [];
+      apiClient.get('/latest-news')
+        .then(res => {
+          const news = Array.isArray(res.data.headlines) ? res.data.headlines : [];
           setNewsHeadlines(news);
           setNewsCached(false);
           setNewsLoading(false);
-          if (typeof window !== 'undefined') {
+          // Only cache the news if we actually got some stories
+          if (typeof window !== 'undefined' && news.length > 0) {
             localStorage.setItem(cacheKey, JSON.stringify({ news, timestamp: Date.now() }));
+          } else if (typeof window !== 'undefined') {
+            // If we got no stories, clear any old stale cache
+            localStorage.removeItem(cacheKey);
           }
         })
         .catch(err => {
@@ -561,14 +439,14 @@ export default function HumorExperimentationPage() {
       setNewsCached(false);
       setNewsLoading(true);
       setNewsError(null);
-      fetch('/api/latest-news')
-        .then(res => res.json())
-        .then(data => {
-          const news = Array.isArray(data.newsStories) ? data.newsStories : [];
+      apiClient.get('/latest-news')
+        .then(res => {
+          const news = Array.isArray(res.data.headlines) ? res.data.headlines : [];
           setNewsHeadlines(news);
           setNewsCached(false);
           setNewsLoading(false);
-          if (typeof window !== 'undefined') {
+          // Only cache the news if we actually got some stories
+          if (typeof window !== 'undefined' && news.length > 0) {
             localStorage.setItem('latestNewsCache', JSON.stringify({ news, timestamp: Date.now() }));
           }
         })
@@ -580,321 +458,182 @@ export default function HumorExperimentationPage() {
   };
 
   // Handler for generating video from rewritten script
-  const handleGenerateVideo = async () => {
-    if (!selectedScript || !selectedScript.rewritten) return;
-    setVideoLoading(true);
-    setVideoError(null);
-    setVideoStatus('processing');
-    setVideoThumbnail(null);
-    setVideoGif(null);
+  const handleGenerateVideo = async (scriptId: string) => {
+    const script = savedScripts.find(s => s.id === scriptId);
+    if (!script || !script.rewritten) {
+      alert("Script not found or no rewritten version available!");
+      return;
+    }
+
+    setVideoState(prev => ({ ...prev, [scriptId]: { generating: true, error: null, videoId: null, status: 'processing', thumbnailUrl: null, videoUrl: null } }));
 
     try {
-      // Call HeyGen API with avatar and voice IDs
-      const res = await fetch('/api/heygen-generate-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          script: selectedScript.rewritten,
-          avatar_id: 'Chad_in_Blue_Shirt_Front',
-          voice_id: '8f0944e10aad4e989bce8f76807b6f36'
-        })
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Failed to generate video');
-      }
-
-      // Check if we have a valid video ID
-      if (!data.videoId) {
-        throw new Error('No video ID received from API');
-      }
-
-      console.log('Starting video generation with ID:', data.videoId);
-
+      const requestBody = createVideoRequestBody(script.rewritten);
+      const response = await apiClient.post<{ videoId: string }>('/heygen-generate-video', requestBody);
+      
+      const videoId = response.data.videoId;
+      setVideoState(prev => ({
+        ...prev,
+        [scriptId]: {
+          ...prev[scriptId],
+          videoId: videoId,
+          status: 'processing', // still processing
+        }
+      }));
       // Start polling for video status
-      const pollInterval = setInterval(async () => {
-        try {
-          console.log('Polling video status for ID:', data.videoId);
-          const statusRes = await fetch(`/api/heygen-video-status?videoId=${encodeURIComponent(data.videoId)}`);
-          const statusData = await statusRes.json();
-          
-          if (statusData.status === 'completed' && statusData.videoUrl) {
-            clearInterval(pollInterval);
-            setVideoStatus('completed');
-            setVideoThumbnail(statusData.thumbnailUrl);
-            setVideoGif(statusData.gifUrl);
-            
-            // Save video URL and thumbnail to script
-            const saveRes = await fetch('/api/save-script', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                ...selectedScript,
-                videoUrl: statusData.videoUrl,
-                videoThumbnail: statusData.thumbnailUrl,
-                videoGif: statusData.gifUrl,
-                videoDuration: statusData.duration,
-                videoCreatedAt: statusData.created_at
-              })
-            });
-            const savedScript = await saveRes.json();
-            setSelectedScript(savedScript);
-            setVideoLoading(false);
-          } else if (statusData.status === 'failed' || statusData.error) {
-            clearInterval(pollInterval);
-            setVideoStatus('failed');
-            setVideoError(statusData.error || 'Video generation failed');
-            setVideoLoading(false);
-          } else if (statusData.status === 'processing' || statusData.status === 'pending') {
-            setVideoStatus('processing');
-            // Update thumbnail or GIF if available
-            if (statusData.thumbnailUrl) {
-              setVideoThumbnail(statusData.thumbnailUrl);
-              // Save thumbnail even during processing
-              const saveRes = await fetch('/api/save-script', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  ...selectedScript,
-                  videoThumbnail: statusData.thumbnailUrl
-                })
-              });
-              const savedScript = await saveRes.json();
-              setSelectedScript(savedScript);
-            }
-            if (statusData.gifUrl) {
-              setVideoGif(statusData.gifUrl);
-              // Save GIF if available
-              const saveRes = await fetch('/api/save-script', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  ...selectedScript,
-                  videoGif: statusData.gifUrl
-                })
-              });
-              const savedScript = await saveRes.json();
-              setSelectedScript(savedScript);
-            }
-          }
-        } catch (err) {
-          console.error('Error polling video status:', err);
-          clearInterval(pollInterval);
-          setVideoStatus('failed');
-          setVideoError('Failed to check video status');
-          setVideoLoading(false);
+      pollVideoStatus(scriptId, videoId);
+    } catch (error: any) {
+      console.error('Error generating video:', error);
+      const errorMessage = error.response?.data?.error || error.message || "An unknown error occurred during video generation.";
+      setVideoState(prev => ({
+        ...prev,
+        [scriptId]: {
+          ...prev[scriptId],
+          generating: false,
+          error: errorMessage,
+          status: 'failed',
         }
-      }, 5000); // Poll every 5 seconds
-
-      // Clear interval after 10 minutes (timeout)
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (videoLoading) {
-          setVideoStatus('failed');
-          setVideoError('Video generation timed out');
-          setVideoLoading(false);
-        }
-      }, 10 * 60 * 1000);
-
-    } catch (err: any) {
-      console.error('Error generating video:', err);
-      setVideoStatus('failed');
-      setVideoError(err.message || 'Unknown error');
-      setVideoLoading(false);
+      }));
     }
   };
 
-  // Handler to fetch and output avatars
+  const pollVideoStatus = async (scriptId: string, videoId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusRes = await apiClient.get(`/heygen-video-status?videoId=${videoId}`);
+        const statusData = statusRes.data;
+        if (statusData.status === 'completed') {
+          clearInterval(pollInterval);
+          // Persist the final video URL to the database
+          const updatedScript = { ...savedScripts.find(s => s.id === scriptId), video_url: statusData.video_url };
+          await apiClient.post('/save-script', { script: updatedScript });
+
+          // Update local state
+          setVideoState(prev => ({
+            ...prev,
+            [scriptId]: {
+              ...prev[scriptId],
+              generating: false,
+              status: 'completed',
+              thumbnailUrl: statusData.thumbnail_url,
+              videoUrl: statusData.video_url,
+            }
+          }));
+          // Update the main script list
+          setSavedScripts(prev => prev.map(s => s.id === scriptId ? updatedScript : s));
+          setSelectedScript(updatedScript); // also update the selected one
+
+        } else if (statusData.status === 'failed') {
+          clearInterval(pollInterval);
+          setVideoState(prev => ({
+            ...prev,
+            [scriptId]: {
+              ...prev[scriptId],
+              generating: false,
+              status: 'failed',
+              error: 'Video generation failed on the server.',
+            }
+          }));
+        }
+        // if still processing, do nothing and let it poll again
+      } catch (pollErr) {
+        console.error("Error polling video status:", pollErr);
+        // Don't stop polling on error, maybe the server is just temporarily down
+      }
+    }, 5000); // Poll every 5 seconds
+  };
+
   const handleOutputAvatars = async () => {
     setAvatarsLoading(true);
     setAvatarsError(null);
-    setVoicesError(null);
-    const cacheKey = 'heygenAvatarsCache';
-    const voicesCacheKey = 'heygenVoicesCache';
-    const cache = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
-    const voicesCache = typeof window !== 'undefined' ? localStorage.getItem(voicesCacheKey) : null;
-    let parsed: { avatars: any[]; talking_photos: any[]; timestamp: number } | null = null;
-    let voicesParsed: { voices: any[]; timestamp: number } | null = null;
-    const now = Date.now();
-    if (cache) {
-      try {
-        parsed = JSON.parse(cache);
-      } catch {}
-    }
-    if (voicesCache) {
-      try {
-        voicesParsed = JSON.parse(voicesCache);
-      } catch {}
-    }
-    if (parsed && parsed.avatars && parsed.timestamp && now - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
-      // Cache valid (7 days)
-      console.log('Heygen Avatars (from cache):', parsed.avatars);
-      console.log('Heygen Talking Photos (from cache):', parsed.talking_photos);
-      if (voicesParsed && voicesParsed.voices && voicesParsed.timestamp && now - voicesParsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
-        console.log('Heygen Voices (from cache):', voicesParsed.voices);
-      } else {
-        // Fetch voices if not cached
-        try {
-          const voicesRes = await fetch('/api/heygen-list-voices');
-          const voicesData = await voicesRes.json();
-          if (!voicesRes.ok || !Array.isArray(voicesData.voices)) {
-            throw new Error(voicesData.message || voicesData.error || 'Failed to fetch voices');
-          }
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(voicesCacheKey, JSON.stringify({ voices: voicesData.voices, timestamp: Date.now() }));
-          }
-          console.log('Heygen Voices:', voicesData.voices);
-        } catch (err: any) {
-          setVoicesError(err.message || 'Failed to fetch voices');
-        }
+    try {
+      const res = await apiClient.get('/heygen-list-avatars');
+      const data = res.data;
+      console.log("Available Avatars:", data.avatars);
+      // In a real app, you'd set this to state and display it.
+    } catch (err: any) {
+      if ((err as any).response?.status !== 401) {
+        setAvatarsError("Failed to fetch avatars or voices.");
       }
+    } finally {
       setAvatarsLoading(false);
-      return;
     }
-    // Fetch both avatars and voices in parallel
-    const avatarsPromise = (async () => {
-      try {
-        // NOTE: You may need to add your API key here or use a backend proxy for security
-        const res = await fetch('/api/heygen-list-avatars');
-        const data = await res.json();
-        if (!res.ok || !Array.isArray(data.avatars)) {
-          throw new Error(data.message || data.error || 'Failed to fetch avatars');
-        }
-        // Cache for 7 days
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(cacheKey, JSON.stringify({ avatars: data.avatars, talking_photos: data.talking_photos || [], timestamp: Date.now() }));
-        }
-        console.log('Heygen Avatars:', data.avatars);
-        console.log('Heygen Talking Photos:', data.talking_photos || []);
-      } catch (err: any) {
-        setAvatarsError(err.message || 'Failed to fetch avatars');
+  };
+
+  const handleOutputVoices = async () => {
+    setVoicesError(null);
+    try {
+      const res = await apiClient.get('/heygen-list-voices');
+      const data = res.data;
+      console.log('Available Voices:', data.voices);
+      // Here you would typically set the voices to state and display them
+    } catch (err: any) {
+      if ((err as any).response?.status !== 401) {
+        setVoicesError("Failed to fetch voices.");
       }
-    })();
-    const voicesPromise = (async () => {
-      try {
-        const voicesRes = await fetch('/api/heygen-list-voices');
-        const voicesData = await voicesRes.json();
-        if (!voicesRes.ok || !Array.isArray(voicesData.voices)) {
-          throw new Error(voicesData.message || voicesData.error || 'Failed to fetch voices');
-        }
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(voicesCacheKey, JSON.stringify({ voices: voicesData.voices, timestamp: Date.now() }));
-        }
-        console.log('Heygen Voices:', voicesData.voices);
-      } catch (err: any) {
-        setVoicesError(err.message || 'Failed to fetch voices');
-      }
-    })();
-    await Promise.all([avatarsPromise, voicesPromise]);
-    setAvatarsLoading(false);
+    }
   };
 
   return (
     <>
       {/* Paste Transcript Button and Modal */}
-      <div style={{ maxWidth: 800, margin: "40px auto 8px auto", padding: 0, background: "none" }}>
+      <div className={styles.controlsContainer}>
         <button
           onClick={() => setShowPasteModal(true)}
-          style={{
-            padding: "8px 16px",
-            fontSize: 16,
-            background: "#2563eb",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            cursor: "pointer",
-            marginBottom: 8
-          }}
+          className={`${styles.actionButton} ${styles.pasteButton}`}
           title="Paste a new transcript manually to create a new script."
         >
           Paste Transcript
         </button>
         <button
-          onClick={handleGenerateVideo}
+          onClick={() => handleGenerateVideo(selectedScript?.id || "")}
           disabled={
             !selectedScript ||
             !selectedScript.rewritten ||
-            !!selectedScript.videoUrl
+            videoState[selectedScript?.id]?.generating ||
+            !!videoState[selectedScript?.id]?.videoUrl ||
+            !!selectedScript.video_url
           }
+          className={`${styles.actionButton} ${styles.generateVideoButton}`}
           style={{
-            padding: "8px 16px",
-            fontSize: 16,
-            background: "#2563eb",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            cursor: !selectedScript || !selectedScript.rewritten || !!selectedScript.videoUrl ? "not-allowed" : "pointer",
-            opacity: !selectedScript || !selectedScript.rewritten || !!selectedScript.videoUrl ? 0.7 : 1,
-            marginLeft: 8
+            cursor: !selectedScript || !selectedScript.rewritten || videoState[selectedScript?.id]?.generating || !!videoState[selectedScript?.id]?.videoUrl || !!selectedScript.video_url ? "not-allowed" : "pointer",
+            opacity: !selectedScript || !selectedScript.rewritten || videoState[selectedScript?.id]?.generating || !!videoState[selectedScript?.id]?.videoUrl || !!selectedScript.video_url ? 0.7 : 1,
           }}
           title="Generate a video from the selected script."
         >
-          Generate Video
+          {videoState[selectedScript?.id]?.generating ? 'Generating...' : 'Generate Video'}
         </button>
         {/* Output Avatars Button */}
         <button
           onClick={handleOutputAvatars}
           disabled={avatarsLoading}
+          className={`${styles.actionButton} ${styles.outputAvatarsButton}`}
           style={{
-            padding: "8px 16px",
-            fontSize: 16,
             background: avatarsLoading ? "#333" : "#2563eb",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
             cursor: avatarsLoading ? "not-allowed" : "pointer",
             opacity: avatarsLoading ? 0.7 : 1,
-            marginLeft: 8
           }}
           title="Fetch and output Heygen avatars to the console."
         >
           {avatarsLoading ? "Loading Avatars..." : "Output Avatars"}
         </button>
         {avatarsError && (
-          <span style={{ color: '#f87171', marginLeft: 8 }}>{avatarsError}</span>
+          <span className={styles.errorSpan}>{avatarsError}</span>
         )}
         {voicesError && (
-          <span style={{ color: '#f87171', marginLeft: 8 }}>{voicesError}</span>
+          <span className={styles.errorSpan}>{voicesError}</span>
         )}
       </div>
       {showPasteModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100vw",
-          height: "100vh",
-          background: "rgba(0,0,0,0.7)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: "#23232a",
-            padding: 32,
-            borderRadius: 12,
-            maxWidth: 500,
-            width: "90%",
-            boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
-            color: "#f3f3f3"
-          }}>
-            <h2 style={{ color: "#fff", marginBottom: 16 }}>Paste Transcript</h2>
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h2 className={styles.modalTitle}>Paste Transcript</h2>
             <input
               type="text"
               value={pasteName}
               onChange={e => setPasteName(e.target.value)}
               placeholder="Enter script name..."
-              style={{
-                width: "100%",
-                padding: 10,
-                fontSize: 16,
-                background: "#18181b",
-                color: "#f3f3f3",
-                border: "1px solid #333",
-                borderRadius: 6,
-                marginBottom: 12
-              }}
+              className={styles.modalInput}
               disabled={pasteLoading}
             />
             <input
@@ -902,37 +641,19 @@ export default function HumorExperimentationPage() {
               value={pasteUrl}
               onChange={e => setPasteUrl(e.target.value)}
               placeholder="Enter source URL (optional)"
-              style={{
-                width: "100%",
-                padding: 10,
-                fontSize: 16,
-                background: "#18181b",
-                color: "#f3f3f3",
-                border: "1px solid #333",
-                borderRadius: 6,
-                marginBottom: 12
-              }}
+              className={styles.modalInput}
               disabled={pasteLoading}
             />
             <textarea
               value={pastedTranscript}
               onChange={e => setPastedTranscript(e.target.value)}
               rows={10}
-              style={{
-                width: "100%",
-                padding: 12,
-                fontSize: 16,
-                background: "#18181b",
-                color: "#f3f3f3",
-                border: "1px solid #333",
-                borderRadius: 6,
-                marginBottom: 16
-              }}
+              className={styles.modalTextarea}
               placeholder="Paste your transcript here..."
               disabled={pasteLoading}
             />
-            {pasteError && <div style={{ color: "#f87171", marginBottom: 8 }}>{pasteError}</div>}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+            {pasteError && <div className={styles.modalError}>{pasteError}</div>}
+            <div className={styles.modalActions}>
               <button
                 onClick={() => {
                   setShowPasteModal(false);
@@ -941,13 +662,8 @@ export default function HumorExperimentationPage() {
                   setPasteName("");
                   setPasteUrl("");
                 }}
+                className={`${styles.modalButton} ${styles.modalButtonCancel}`}
                 style={{
-                  padding: "8px 16px",
-                  fontSize: 16,
-                  background: "#333",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
                   cursor: pasteLoading ? "not-allowed" : "pointer",
                   opacity: pasteLoading ? 0.7 : 1
                 }}
@@ -958,13 +674,9 @@ export default function HumorExperimentationPage() {
               </button>
               <button
                 onClick={handlePasteTranscriptSave}
+                className={`${styles.modalButton} ${styles.modalButtonConfirm}`}
                 style={{
-                  padding: "8px 16px",
-                  fontSize: 16,
                   background: pasteLoading ? "#333" : "#2563eb",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
                   cursor: pasteLoading ? "not-allowed" : "pointer",
                   opacity: pasteLoading ? 0.7 : 1
                 }}
@@ -978,12 +690,12 @@ export default function HumorExperimentationPage() {
         </div>
       )}
       {/* Saved Script Loader UI (above main container) */}
-      <div style={{ maxWidth: 800, margin: "0 auto 16px auto", padding: 0, background: "none", display: 'flex', alignItems: 'center', gap: 8 }}>
-        <label style={{ color: "#fff", fontWeight: 500, marginRight: 12 }}>Load Saved Script:</label>
+      <div className={styles.scriptLoaderContainer}>
+        <label className={styles.scriptLoaderLabel}>Load Saved Script:</label>
         {savedScriptsLoading ? (
-          <span style={{ color: "#888" }}>Loading...</span>
+          <span className={styles.scriptLoaderStatus}>Loading...</span>
         ) : savedScriptsError ? (
-          <span style={{ color: "#f87171" }}>{savedScriptsError}</span>
+          <span className={styles.errorSpan}>{savedScriptsError}</span>
         ) : (
           <select
             value={selectedScript?.id || ""}
@@ -998,15 +710,7 @@ export default function HumorExperimentationPage() {
                 localStorage.setItem('lastSelectedScriptId', found.id);
               }
             }}
-            style={{
-              background: "#23232a",
-              color: "#f3f3f3",
-              border: "1px solid #333",
-              borderRadius: 6,
-              padding: "6px 12px",
-              fontSize: 16,
-              minWidth: 300
-            }}
+            className={styles.scriptLoaderSelect}
           >
             <option value="">-- Select a saved script --</option>
             {savedScripts.map(s => (
@@ -1021,16 +725,12 @@ export default function HumorExperimentationPage() {
           onClick={() => setShowDeleteConfirm(true)}
           disabled={!selectedScript || deleteLoading}
           title="Delete selected script"
+          className={`${styles.iconButton} ${styles.deleteButton}`}
           style={{
             background: deleteLoading ? "#333" : "#23232a",
             color: deleteLoading ? "#888" : "#f87171",
-            border: "none",
-            borderRadius: 6,
-            padding: "6px 10px",
-            fontSize: 20,
             cursor: !selectedScript || deleteLoading ? "not-allowed" : "pointer",
             opacity: !selectedScript || deleteLoading ? 0.5 : 1,
-            marginLeft: 4
           }}
         >
           🗑️
@@ -1040,16 +740,10 @@ export default function HumorExperimentationPage() {
           onClick={handleConvertScript}
           disabled={!selectedScript || !!selectedScript.rewritten}
           title="Rewrite the selected script using OpenAI in a chosen style."
+          className={`${styles.iconButton} ${styles.convertButton}`}
           style={{
-            background: "#23232a",
-            color: "#22d3ee",
-            border: "none",
-            borderRadius: 6,
-            padding: "6px 10px",
-            fontSize: 18,
             cursor: !selectedScript || !!selectedScript.rewritten ? "not-allowed" : "pointer",
             opacity: !selectedScript || !!selectedScript.rewritten ? 0.5 : 1,
-            marginLeft: 4
           }}
         >
           ⚡
@@ -1059,46 +753,21 @@ export default function HumorExperimentationPage() {
           onClick={() => console.log(selectedScript)}
           disabled={!selectedScript}
           title="Log the current script object to the console for inspection."
+          className={`${styles.iconButton} ${styles.debugButton}`}
           style={{
-            background: "#23232a",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            padding: "6px 10px",
-            fontSize: 18,
             cursor: !selectedScript ? "not-allowed" : "pointer",
             opacity: !selectedScript ? 0.5 : 1,
-            marginLeft: 4
           }}
         >
           🧑‍🔬
         </button>
         {/* Rewrite Modal */}
         {showRewriteModal && selectedScript && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(0,0,0,0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1200
-          }}>
-            <div style={{
-              background: "#23232a",
-              padding: 32,
-              borderRadius: 12,
-              maxWidth: 420,
-              width: "90%",
-              boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
-              color: "#f3f3f3"
-            }}>
-              <h2 style={{ color: "#fff", marginBottom: 16 }}>Rewrite Script</h2>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+          <div className={styles.modalOverlay} style={{ zIndex: 1200 }}>
+            <div className={`${styles.modalContent} ${styles.rewriteModalContent}`}>
+              <h2 className={styles.modalTitle}>Rewrite Script</h2>
+              <div className={styles.rewriteModalInputContainer}>
+                <label className={styles.rewriteModalLabel}>
                   Length of new script (Current script is {selectedScript.original.split(/\s+/).filter(Boolean).length} words):
                 </label>
                 <input
@@ -1106,34 +775,18 @@ export default function HumorExperimentationPage() {
                   min={1}
                   value={rewriteLength}
                   onChange={e => setRewriteLength(Number(e.target.value))}
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    fontSize: 16,
-                    background: '#18181b',
-                    color: '#f3f3f3',
-                    border: '1px solid #333',
-                    borderRadius: 6
-                  }}
+                  className={styles.modalInput}
                   title="Set the desired length (in words) for the rewritten script."
                 />
               </div>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+              <div className={styles.rewriteModalInputContainer}>
+                <label className={styles.rewriteModalLabel}>
                   Rewrite style:
                 </label>
                 <select
                   value={rewriteStyle}
                   onChange={e => setRewriteStyle(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    fontSize: 16,
-                    background: '#18181b',
-                    color: '#f3f3f3',
-                    border: '1px solid #333',
-                    borderRadius: 6
-                  }}
+                  className={styles.modalInput}
                   title="Choose the style (comedian) for the rewritten script."
                 >
                   {COMEDIAN_LIST.map(c => (
@@ -1141,17 +794,12 @@ export default function HumorExperimentationPage() {
                   ))}
                 </select>
               </div>
-              {rewriteError && <div style={{ color: '#f87171', marginBottom: 12 }}>{rewriteError}</div>}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              {rewriteError && <div className={styles.modalError}>{rewriteError}</div>}
+              <div className={styles.modalActions}>
                 <button
                   onClick={() => setShowRewriteModal(false)}
+                  className={`${styles.modalButton} ${styles.modalButtonCancel}`}
                   style={{
-                    padding: '8px 16px',
-                    fontSize: 16,
-                    background: '#333',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
                     cursor: rewriteLoading ? 'not-allowed' : 'pointer',
                     opacity: rewriteLoading ? 0.7 : 1
                   }}
@@ -1162,13 +810,9 @@ export default function HumorExperimentationPage() {
                 </button>
                 <button
                   onClick={handleRewriteSubmit}
+                  className={`${styles.modalButton} ${styles.modalButtonConfirm}`}
                   style={{
-                    padding: '8px 16px',
-                    fontSize: 16,
                     background: rewriteLoading ? '#333' : '#2563eb',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
                     cursor: rewriteLoading ? 'not-allowed' : 'pointer',
                     opacity: rewriteLoading ? 0.7 : 1
                   }}
@@ -1179,16 +823,10 @@ export default function HumorExperimentationPage() {
                 </button>
                 <button
                   onClick={() => console.log(selectedScript)}
+                  className={`${styles.iconButton} ${styles.debugButton}`}
                   style={{
-                    padding: '8px 16px',
-                    fontSize: 16,
-                    background: '#333',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
                     cursor: rewriteLoading ? 'not-allowed' : 'pointer',
                     opacity: rewriteLoading ? 0.7 : 1,
-                    marginLeft: 4
                   }}
                   disabled={rewriteLoading}
                   title="Log the current script object to the console for inspection."
@@ -1201,34 +839,12 @@ export default function HumorExperimentationPage() {
         )}
       </div>
       {/* Latest News Expandable Section */}
-      <div style={{ maxWidth: 800, margin: '0 auto 16px auto', padding: 0, background: 'none' }}>
-        <div
-          style={{
-            background: '#23232a',
-            color: '#f3f3f3',
-            borderRadius: 6,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-            marginTop: 8,
-            marginBottom: 8,
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+      <div className={styles.newsContainer}>
+        <div className={styles.newsWrapper}>
+          <div className={styles.newsHeader}>
             <button
               onClick={() => setNewsExpanded((v: boolean) => !v)}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                background: 'none',
-                color: '#f3f3f3',
-                border: 'none',
-                padding: '14px 18px',
-                fontSize: 18,
-                fontWeight: 600,
-                cursor: 'pointer',
-                outline: 'none',
-                flex: 1,
-              }}
+              className={styles.newsToggleButton}
               aria-expanded={newsExpanded}
               aria-controls="latest-news-panel"
               title="Show or hide the latest news stories for joke inspiration."
@@ -1241,26 +857,19 @@ export default function HumorExperimentationPage() {
                 e.stopPropagation();
                 handleClearNewsCache();
               }}
-              style={{
-                background: 'none',
-                color: '#f3f3f3',
-                border: 'none',
-                padding: '0',
-                fontSize: 18,
-                cursor: 'pointer',
-              }}
+              className={styles.newsClearButton}
             >
               🗑️
             </button>
           </div>
           {newsExpanded && (
-            <div id="latest-news-panel" style={{ padding: '16px 24px', borderTop: '1px solid #333', background: '#18181b' }}>
+            <div id="latest-news-panel" className={styles.newsPanel}>
               {newsLoading ? (
-                <div style={{ color: '#38bdf8', fontSize: 16 }}>Loading news...</div>
+                <div className={styles.newsLoading}>Loading news...</div>
               ) : newsError ? (
-                <div style={{ color: '#f87171', fontSize: 16 }}>{newsError}</div>
+                <div className={styles.newsError}>{newsError}</div>
               ) : newsHeadlines.length > 0 ? (
-                <ul style={{ margin: 0, padding: 0, listStyle: 'none', color: '#a3e635', fontSize: 16 }}>
+                <ul className={styles.newsList}>
                   {newsHeadlines.map((item: NewsItem, idx: number) => {
                     if (typeof item === 'string') {
                       // Old format: just a headline string
@@ -1268,11 +877,11 @@ export default function HumorExperimentationPage() {
                     } else if (item && typeof item === 'object' && 'headline' in item && 'summary' in item) {
                       // New format: object with headline and summary
                       return (
-                        <li key={idx} style={{ marginBottom: 18, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                          <input type="checkbox" checked={checkedNewsIndices.includes(idx)} disabled={!checkedNewsIndices.includes(idx) && checkedNewsIndices.length >= 3} onChange={() => handleNewsCheckbox(idx)} style={{ marginTop: 4 }} />
+                        <li key={idx} className={styles.newsListItem}>
+                          <input type="checkbox" checked={checkedNewsIndices.includes(idx)} disabled={!checkedNewsIndices.includes(idx) && checkedNewsIndices.length >= 3} onChange={() => handleNewsCheckbox(idx)} className={styles.newsCheckbox} />
                           <div>
-                            <div style={{ fontWeight: 700, color: '#f3f3f3', marginBottom: 4 }}>{item.headline}</div>
-                            <div style={{ color: '#a3a3a3', fontSize: 15, lineHeight: 1.5 }}>{item.summary}</div>
+                            <div className={styles.newsHeadline}>{item.headline}</div>
+                            <div className={styles.newsSummary}>{item.summary}</div>
                           </div>
                         </li>
                       );
@@ -1282,10 +891,10 @@ export default function HumorExperimentationPage() {
                   })}
                 </ul>
               ) : (
-                <div style={{ color: '#888', fontSize: 16 }}>No news stories found.</div>
+                <div className={styles.newsEmpty}>No news stories found.</div>
               )}
               {newsCached && !newsLoading && (
-                <div style={{ color: '#38bdf8', fontSize: 13, marginTop: 8 }}>(cached for 8h)</div>
+                <div className={styles.newsCachedStatus}>(cached for 8h)</div>
               )}
             </div>
           )}
@@ -1293,40 +902,15 @@ export default function HumorExperimentationPage() {
       </div>
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100vw",
-          height: "100vh",
-          background: "rgba(0,0,0,0.7)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1100
-        }}>
-          <div style={{
-            background: "#23232a",
-            padding: 32,
-            borderRadius: 12,
-            maxWidth: 400,
-            width: "90%",
-            boxShadow: "0 2px 16px rgba(0,0,0,0.5)",
-            color: "#f3f3f3",
-            textAlign: "center"
-          }}>
-            <h2 style={{ color: "#fff", marginBottom: 16 }}>Delete Script?</h2>
-            <p style={{ marginBottom: 24 }}>Are you sure you want to delete this script? This action cannot be undone.</p>
-            <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
+        <div className={styles.modalOverlay} style={{ zIndex: 1100 }}>
+          <div className={`${styles.modalContent} ${styles.deleteConfirmContent}`}>
+            <h2 className={styles.modalTitle}>Delete Script?</h2>
+            <p className={styles.deleteConfirmText}>Are you sure you want to delete this script? This action cannot be undone.</p>
+            <div className={styles.deleteConfirmActions}>
               <button
                 onClick={() => setShowDeleteConfirm(false)}
+                className={`${styles.deleteConfirmButton} ${styles.deleteConfirmButtonNo}`}
                 style={{
-                  padding: "8px 24px",
-                  fontSize: 16,
-                  background: "#333",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
                   cursor: deleteLoading ? "not-allowed" : "pointer",
                   opacity: deleteLoading ? 0.7 : 1
                 }}
@@ -1337,13 +921,9 @@ export default function HumorExperimentationPage() {
               </button>
               <button
                 onClick={handleDeleteScript}
+                className={`${styles.deleteConfirmButton} ${styles.deleteConfirmButtonYes}`}
                 style={{
-                  padding: "8px 24px",
-                  fontSize: 16,
                   background: deleteLoading ? "#333" : "#ef4444",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
                   cursor: deleteLoading ? "not-allowed" : "pointer",
                   opacity: deleteLoading ? 0.7 : 1
                 }}
@@ -1357,95 +937,45 @@ export default function HumorExperimentationPage() {
         </div>
       )}
       {/* Main Humor Experimentation UI */}
-      <div style={{
-        maxWidth: 800,
-        margin: "0 auto",
-        padding: 32,
-        background: "#18181b",
-        color: "#f3f3f3",
-        borderRadius: 16,
-        minHeight: 600,
-        boxShadow: "0 2px 16px rgba(0,0,0,0.4)"
-      }}>
-        <h1 style={{ color: "#fff", marginBottom: 24 }}>Humor Experimentation</h1>
+      <div className={styles.mainContainer}>
+        <h1 className={styles.mainTitle}>Humor Experimentation</h1>
         {selectedScript?.url && (
-          <div style={{ marginBottom: 16 }}>
-            <span style={{ color: '#a3e635', fontWeight: 500 }}>Source URL: </span>
-            <a href={selectedScript.url} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'underline' }}>{selectedScript.url}</a>
+          <div className={styles.sourceUrlContainer}>
+            <span className={styles.sourceUrlLabel}>Source URL: </span>
+            <a href={selectedScript.url} target="_blank" rel="noopener noreferrer" className={styles.sourceUrlLink}>{selectedScript.url}</a>
           </div>
         )}
 
         {/* Show video or loading state */}
-        {(selectedScript?.videoUrl || videoLoading) && (
-          <div style={{ marginBottom: 32 }}>
-            {videoLoading ? (
-              <div style={{ 
-                width: '100%', 
-                aspectRatio: '16/9', 
-                background: '#23232a', 
-                borderRadius: 8,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 16
-              }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  border: '4px solid #f3f3f3',
-                  borderTop: '4px solid #2563eb',
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite'
-                }} />
-                <div style={{ color: '#f3f3f3', fontSize: 16 }}>
-                  {videoStatus === 'processing' ? 'Generating video...' : 'Loading...'}
+        {(videoState[selectedScript?.id] || selectedScript?.video_url) && (
+          <div className={styles.videoContainer}>
+            {videoState[selectedScript?.id]?.generating ? (
+              <div className={styles.videoLoadingContainer}>
+                <div className={styles.spinner} />
+                <div className={styles.videoStatusText}>
+                  {videoState[selectedScript?.id]?.status === 'processing' ? 'Generating video...' : 'Loading...'}
                 </div>
-                {videoThumbnail && (
+                {videoState[selectedScript?.id]?.thumbnailUrl && (
                   <img 
-                    src={videoThumbnail} 
+                    src={videoState[selectedScript.id].thumbnailUrl!} 
                     alt="Video thumbnail" 
-                    style={{ 
-                      maxWidth: '100%', 
-                      maxHeight: 200, 
-                      borderRadius: 4,
-                      opacity: 0.7
-                    }} 
+                    className={styles.videoThumbnail}
                   />
                 )}
-                {videoGif && (
+                {/* Use the final videoUrl from script object if available */}
+                {(videoState[selectedScript?.id]?.videoUrl || selectedScript?.video_url) && (
                   <img 
-                    src={videoGif} 
+                    src={(videoState[selectedScript?.id]?.videoUrl || selectedScript?.video_url)!} 
                     alt="Video preview" 
-                    style={{ 
-                      maxWidth: '100%', 
-                      maxHeight: 200, 
-                      borderRadius: 4,
-                      opacity: 0.7
-                    }} 
+                    className={styles.videoThumbnail}
                   />
                 )}
               </div>
-            ) : selectedScript?.videoUrl ? (
-              <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative' }}>
+            ) : (videoState[selectedScript?.id]?.videoUrl || selectedScript?.video_url) ? (
+              <div className={styles.videoPlayerContainer}>
                 {/* Publish Button Overlay */}
                 <button
-                  style={{
-                    position: 'absolute',
-                    top: 16,
-                    left: 16,
-                    zIndex: 2,
-                    background: '#fff',
-                    color: '#18181b',
-                    border: '1px solid #2563eb',
-                    borderRadius: 6,
-                    padding: '8px 18px',
-                    fontWeight: 600,
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-                    opacity: 0.95
-                  }}
+                  className={styles.publishVideoButton}
                   onClick={() => {
                     if (selectedScript?.name) {
                       window.location.href = `/publish?scriptName=${encodeURIComponent(selectedScript.name)}`;
@@ -1456,54 +986,30 @@ export default function HumorExperimentationPage() {
                   Publish
                 </button>
                 <video 
-                  src={selectedScript.videoUrl} 
+                  src={videoState[selectedScript.id]?.videoUrl || selectedScript.video_url} 
                   controls 
-                  style={{ 
-                    width: '100%', 
-                    height: '100%',
-                    borderRadius: 8, 
-                    background: '#000',
-                    objectFit: 'contain'
-                  }} 
+                  className={styles.videoPlayer}
                 />
               </div>
             ) : null}
-            {videoError && (
-              <div style={{ 
-                color: '#f87171', 
-                marginTop: 8, 
-                padding: 12, 
-                background: '#23232a', 
-                borderRadius: 8 
-              }}>
-                {videoError}
+            {videoState[selectedScript?.id]?.error && (
+              <div className={styles.videoError}>
+                {videoState[selectedScript.id].error}
               </div>
             )}
           </div>
         )}
 
         {/* Paragraph Display and Selection */}
-        <div style={{ marginBottom: 32 }}>
-          <h2 style={{ color: "#fff", fontSize: 20 }}>Script Paragraphs</h2>
-          <ol style={{ paddingLeft: 24, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className={styles.paragraphsContainer}>
+          <h2 className={styles.paragraphsTitle}>Script Paragraphs</h2>
+          <ol className={styles.paragraphsList}>
             {paragraphs.map((p: string, idx: number) => (
               <React.Fragment key={idx}>
-                <li style={{ listStyle: "decimal", color: "#d1d5db", marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <li className={styles.paragraphListItem}>
                   <div
                     onClick={() => setSelectedParagraphIdx(idx)}
-                    style={{
-                      background: selectedParagraphIdx === idx ? "#2563eb" : "#23232a",
-                      color: selectedParagraphIdx === idx ? "#fff" : "#f3f3f3",
-                      padding: 10,
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      border: selectedParagraphIdx === idx ? "2px solid #2563eb" : "2px solid transparent",
-                      transition: "background 0.2s, border 0.2s",
-                      fontWeight: selectedParagraphIdx === idx ? 600 : 400,
-                      boxShadow: selectedParagraphIdx === idx ? "0 2px 8px rgba(37,99,235,0.15)" : undefined,
-                      marginBottom: 0,
-                      flex: 1
-                    }}
+                    className={`${styles.paragraph} ${selectedParagraphIdx === idx ? styles.paragraphSelected : styles.paragraphUnselected}`}
                   >
                     <span dangerouslySetInnerHTML={{ __html: highlightJokeTags(p) }} />
                   </div>
@@ -1513,23 +1019,13 @@ export default function HumorExperimentationPage() {
                       handleRemoveParagraph(idx);
                     }}
                     title="Remove this paragraph from the script. This change is saved."
-                    style={{
-                      marginLeft: 12,
-                      background: '#ef4444',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '4px 10px',
-                      fontSize: 16,
-                      cursor: 'pointer',
-                      opacity: 0.85
-                    }}
+                    className={styles.removeParagraphButton}
                   >
                     ✕
                   </button>
                 </li>
                 {selectedParagraphIdx === idx && (
-                  <div style={{ margin: "8px 0 8px 24px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className={styles.paragraphActions}>
                     {/* Comedian Dropdown */}
                     <select
                       value={selectedComedian[idx] || selectedComedian.default || ""}
@@ -1539,15 +1035,7 @@ export default function HumorExperimentationPage() {
                           localStorage.setItem('lastSelectedComedian', e.target.value);
                         }
                       }}
-                      style={{
-                        background: "#23232a",
-                        color: "#f3f3f3",
-                        border: "1px solid #333",
-                        borderRadius: 6,
-                        padding: "4px 10px",
-                        fontSize: 15,
-                        minWidth: 160
-                      }}
+                      className={styles.comedianSelect}
                       title="Choose a comedian's style to rewrite this paragraph."
                     >
                       <option value="">Select comedian style...</option>
@@ -1560,17 +1048,8 @@ export default function HumorExperimentationPage() {
                       disabled={!(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx}
                       onClick={() => handleExperiment(idx)}
                       title="Generate a humorous variant of this paragraph in the selected comedian's style."
+                      className={`${styles.generateVariantButton} ${loadingIdx === idx ? styles.generateVariantButtonLoading : styles.generateVariantButtonActive}`}
                       style={{
-                        background: loadingIdx === idx ? "#333" : "#2563eb",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "50%",
-                        width: 36,
-                        height: 36,
-                        fontSize: 20,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
                         cursor: !(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx ? "not-allowed" : "pointer",
                         opacity: !(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx ? 0.6 : 1
                       }}
@@ -1580,15 +1059,7 @@ export default function HumorExperimentationPage() {
                     {/* Deselect Button */}
                     <button
                       onClick={handleDeselect}
-                      style={{
-                        background: "#333",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "4px 10px",
-                        fontSize: 14,
-                        cursor: "pointer"
-                      }}
+                      className={styles.deselectButton}
                       title="Deselect this paragraph."
                     >
                       ✕
@@ -1597,22 +1068,13 @@ export default function HumorExperimentationPage() {
                 )}
                 {/* Variants List */}
                 {variants[idx] && variants[idx].length > 0 && (
-                  <ul style={{ margin: "4px 0 12px 36px", padding: 0, listStyle: "disc", color: "#a3e635", fontSize: 15 }}>
+                  <ul className={styles.variantsList}>
                     {variants[idx].map((v, vIdx) => (
-                      <li key={vIdx} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ flex: 1 }} dangerouslySetInnerHTML={{ __html: highlightJokeTags(v) }} />
+                      <li key={vIdx} className={styles.variantListItem}>
+                        <span className={styles.variantText} dangerouslySetInnerHTML={{ __html: highlightJokeTags(v) }} />
                         <button
                           onClick={() => handleSaveVariant(idx, v)}
-                          style={{
-                            background: '#38bdf8',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: 6,
-                            padding: '4px 10px',
-                            fontSize: 16,
-                            cursor: 'pointer',
-                            opacity: 0.95
-                          }}
+                          className={styles.saveVariantButton}
                           title="Replace the original paragraph with this variant and save."
                         >
                           💾
@@ -1623,10 +1085,10 @@ export default function HumorExperimentationPage() {
                 )}
                 {/* Error/Loading */}
                 {errorIdx[idx] && (
-                  <div style={{ color: "#f87171", marginLeft: 36, fontSize: 14 }}>{errorIdx[idx]}</div>
+                  <div className={`${styles.statusMessage} ${styles.errorMessage}`}>{errorIdx[idx]}</div>
                 )}
                 {loadingIdx === idx && (
-                  <div style={{ color: "#888", marginLeft: 36, fontSize: 14 }}>Generating...</div>
+                  <div className={`${styles.statusMessage} ${styles.loadingMessage}`}>Generating...</div>
                 )}
               </React.Fragment>
             ))}

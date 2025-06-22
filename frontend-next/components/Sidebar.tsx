@@ -12,7 +12,7 @@ const Sidebar = () => {
     { href: '/dashboard', label: 'Dashboard', icon: FiGrid },
     { href: '/settings', label: 'Settings', icon: FiSettings },
     { href: '/publish', label: 'Publish', icon: FiUploadCloud },
-    { href: '/humor-experimentation', label: 'Transcript', icon: FiSmile },
+    { href: '/humor-experimentation', label: 'Humor Experimentation', icon: FiSmile },
   ];
 
   return (
