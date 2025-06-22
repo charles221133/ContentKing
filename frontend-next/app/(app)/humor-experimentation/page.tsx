@@ -32,10 +32,6 @@ const COMEDIAN_LIST = [
   "Fireship", "Norm Macdonald", "Tig Notaro", "Demetri Martin", "Ronny Chieng", "Daniel Tosh",
 ];
 
-// --- Hardcoded values for video generation ---
-// TODO: Replace these with the correct IDs.
-const HARDCODED_AVATAR_ID = "YOUR_AVATAR_ID_HERE";
-const HARDCODED_VOICE_ID = "YOUR_VOICE_ID_HERE";
 
 // Utility to highlight <joke>...</joke> tags in text
 function highlightJokeTags(text: string) {
@@ -500,9 +496,10 @@ export default function HumorExperimentationPage() {
   const pollVideoStatus = async (scriptId: string, videoId: string) => {
     const pollInterval = setInterval(async () => {
       try {
-        const statusRes = await apiClient.get(`/heygen-video-status?videoId=${videoId}`);
+        const statusRes = await apiClient.post(`/heygen-video-status`, { videoId });
         const statusData = statusRes.data;
         if (statusData.status === 'completed') {
+          console.log("Video generation complete. Received data:", statusData);
           clearInterval(pollInterval);
           // Persist the final video URL to the database
           const updatedScript = { ...savedScripts.find(s => s.id === scriptId), video_url: statusData.video_url };
@@ -543,34 +540,26 @@ export default function HumorExperimentationPage() {
     }, 5000); // Poll every 5 seconds
   };
 
-  const handleOutputAvatars = async () => {
+  const handleOutputAssets = async () => {
     setAvatarsLoading(true);
     setAvatarsError(null);
+    setVoicesError(null);
     try {
-      const res = await apiClient.get('/heygen-list-avatars');
-      const data = res.data;
-      console.log("Available Avatars:", data.avatars);
-      // In a real app, you'd set this to state and display it.
+      const [avatarsRes, voicesRes] = await Promise.all([
+        apiClient.get('/heygen-list-avatars'),
+        apiClient.get('/heygen-list-voices')
+      ]);
+      
+      console.log("Available Avatars:", avatarsRes.data.avatars);
+      console.log('Available Voices:', voicesRes.data.voices);
+
     } catch (err: any) {
+      console.error("Failed to fetch assets:", err);
       if ((err as any).response?.status !== 401) {
         setAvatarsError("Failed to fetch avatars or voices.");
       }
     } finally {
       setAvatarsLoading(false);
-    }
-  };
-
-  const handleOutputVoices = async () => {
-    setVoicesError(null);
-    try {
-      const res = await apiClient.get('/heygen-list-voices');
-      const data = res.data;
-      console.log('Available Voices:', data.voices);
-      // Here you would typically set the voices to state and display them
-    } catch (err: any) {
-      if ((err as any).response?.status !== 401) {
-        setVoicesError("Failed to fetch voices.");
-      }
     }
   };
 
@@ -605,7 +594,7 @@ export default function HumorExperimentationPage() {
         </button>
         {/* Output Avatars Button */}
         <button
-          onClick={handleOutputAvatars}
+          onClick={handleOutputAssets}
           disabled={avatarsLoading}
           className={`${styles.actionButton} ${styles.outputAvatarsButton}`}
           style={{
@@ -613,15 +602,12 @@ export default function HumorExperimentationPage() {
             cursor: avatarsLoading ? "not-allowed" : "pointer",
             opacity: avatarsLoading ? 0.7 : 1,
           }}
-          title="Fetch and output Heygen avatars to the console."
+          title="Fetch and output Heygen avatars and voices to the console."
         >
-          {avatarsLoading ? "Loading Avatars..." : "Output Avatars"}
+          {avatarsLoading ? "Loading Assets..." : "Output Avatars & Voices"}
         </button>
         {avatarsError && (
           <span className={styles.errorSpan}>{avatarsError}</span>
-        )}
-        {voicesError && (
-          <span className={styles.errorSpan}>{voicesError}</span>
         )}
       </div>
       {showPasteModal && (

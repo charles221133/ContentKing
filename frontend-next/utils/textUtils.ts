@@ -14,5 +14,19 @@ export function stripTimestamps(text: string): string {
   }
   // This regex matches timestamps at the beginning of lines (^)
   // It handles formats like M:SS, H:MM:SS, and optional milliseconds.
-  return text.replace(/^\s*(\d{1,2}:)?\d{1,2}:\d{2}\.?\d*\s*/gm, '');
+  return text.replace(/^\s*(\d{1,2}:)?\d{1,2}:\d{2}\.?\d*\s*/gm, '')
+    // Also remove any resulting empty lines
+    .replace(/^\s*[\r\n]/gm, '');
+}
+
+/**
+ * Removes <joke>...</joke> tags from a string.
+ * @param text The text to process.
+ * @returns The text with <joke> tags removed.
+ */
+export function stripJokeTags(text: string): string {
+  if (!text) {
+    return '';
+  }
+  return text.replace(/<joke>([\s\S]*?)<\/joke>/gi, '');
 } 

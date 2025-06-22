@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     // Map the response to our expected format
     return NextResponse.json({
       status: data.data?.status || 'unknown',
-      videoUrl: data.data?.video_url,
-      thumbnailUrl: data.data?.thumbnail_url,
-      gifUrl: data.data?.gif_url,
+      video_url: data.data?.video_url,
+      thumbnail_url: data.data?.thumbnail_url,
+      gif_url: data.data?.gif_url,
       error: data.data?.error
     });
   } catch (error: any) {

@@ -1,12 +1,13 @@
 // --- Hardcoded values for video generation ---
 // Replace "YOUR_VOICE_ID_HERE" with the correct ID for your specific voice.
-const AVATAR_ID = "638e445ab239450009596637";
-const VOICE_ID = "YOUR_VOICE_ID_HERE"; // Example: "21m00Tcm4TlvDq8ikWAM"
+const AVATAR_ID = "Miles_standing_sofa_side";
+const VOICE_ID = "9ff7fd2dd9114c3bae005e62aa485e52";
 
 interface VideoRequestBody {
   script: string;
   avatar_id: string;
   voice_id: string;
+  dimension: { width: number; height: number };
 }
 
 /**
@@ -31,5 +32,6 @@ export function createVideoRequestBody(script: string): VideoRequestBody {
     script,
     avatar_id: AVATAR_ID,
     voice_id: VOICE_ID,
+    dimension: { "width": 1080, "height": 1920 }
   };
 } 
