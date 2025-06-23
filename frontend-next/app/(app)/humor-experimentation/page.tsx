@@ -187,10 +187,9 @@ export default function HumorExperimentationPage() {
     try {
       const comedian = selectedComedian[idx] || "Fireship";
       // Request 4 variants in a single backend call
-      const res = await apiClient.post("/personalize-script", {
-        script: paragraphs[idx],
+      const res = await apiClient.post("/generate-variants", {
+        paragraph: paragraphs[idx],
         userStyle: comedian,
-        force: true,
         newsNuggets: checkedNewsHeadlines
       });
       const data = res.data;
@@ -208,11 +207,17 @@ export default function HumorExperimentationPage() {
 
   // Save a variant as the new paragraph, persist, and clear experiments
   const handleSaveVariant = async (idx: number, variant: string) => {
-    // This is a simplified save. A real implementation would be more robust.
     const newParagraphs = [...paragraphs];
     newParagraphs[idx] = variant;
     setParagraphsOverride(newParagraphs);
     setSelectedParagraphIdx(null);
+
+    // Clear the variants for this paragraph from the UI
+    setVariants(v => {
+      const newV = { ...v };
+      delete newV[idx];
+      return newV;
+    });
 
     // Save the full updated script
     if (selectedScript) {

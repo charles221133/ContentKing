@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { addPromptScript } from '@/utils/promptStorage';
-import openai from '@/utils/openai'; // Use the correct OpenAI client
-import { personalizeScriptPrompt } from '@/utils/prompts';
+import openai from '@/utils/openai';
+import { personalizeScriptPrompt, generateVariantsPrompt } from '@/utils/prompts';
 
-// This API route is for script personalization using OpenAI. Any UI using this should use a dark theme by default.
+// This API route is for script personalization using OpenAI.
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -28,22 +27,27 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { id, script, userStyle, newsNuggets } = await req.json();
+    const { id, script, userStyle, newsNuggets, isVariantGeneration } = await req.json();
 
     if (!script) {
-      return NextResponse.json({ error: 'Script is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Script content is required' }, { status: 400 });
     }
 
-    // This builds the entire prompt as a single string.
-    const promptString = personalizeScriptPrompt.build({
-      script,
-      userStyle: userStyle || 'Fireship',
-      newsNuggets: newsNuggets || [],
-    });
-    
-    // The entire string is the prompt. We send it as a single user message.
+    // Conditionally select the prompt and build the prompt string
+    const promptString = isVariantGeneration
+      ? generateVariantsPrompt.build({
+          paragraph: script, // For variants, the 'script' is just a paragraph
+          userStyle: userStyle || 'Fireship',
+          newsNuggets: newsNuggets || [],
+        })
+      : personalizeScriptPrompt.build({
+          script,
+          userStyle: userStyle || 'Fireship',
+          newsNuggets: newsNuggets || [],
+        });
+
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', 
+      model: 'gpt-4o',
       messages: [
         {
           role: 'user',
@@ -52,35 +56,15 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    let personalizedScript = completion.choices[0]?.message?.content || '';
-    // Clean the response: remove any lines that are just '---'
-    personalizedScript = personalizedScript.split('\n').filter(line => line.trim() !== '---').join('\n');
-    
-    let savedScript;
-    if (id) {
-      // If an ID was provided, update the existing script
-      const { data, error } = await supabase
-        .from('scripts')
-        .update({ rewritten: personalizedScript, user_style: userStyle || 'Fireship' })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      savedScript = data;
-    } else {
-      // Otherwise, create a new script record
-      savedScript = await addPromptScript({
-        name: `Personalized: ${script.substring(0, 20)}...`,
-        original: script,
-        user_style: userStyle || 'Fireship',
-        rewritten: personalizedScript,
-        prompt_version: personalizeScriptPrompt.version,
-        user_id: user.id,
-      });
-    }
+    const personalizedScript = completion.choices[0]?.message?.content || '';
 
-    return NextResponse.json({ script: personalizedScript, savedScriptId: savedScript.id }, { status: 200 });
+    // The logic to save the script is complex and depends on whether it's a new script,
+    // a full rewrite, or a variant update. The frontend currently handles saving variants.
+    // For simplicity, this backend will focus on generation and returning the text.
+    // The frontend will receive this and decide how to persist it.
+    // We will return the 'rewritten' text, which might be a full script or variants.
+    return NextResponse.json({ rewritten: personalizedScript }, { status: 200 });
+
   } catch (err: any) {
     console.error('Error in personalize-script route:', err);
     return NextResponse.json(
