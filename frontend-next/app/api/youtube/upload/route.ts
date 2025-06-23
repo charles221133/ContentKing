@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { Readable } from 'stream';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
+
+const OAuth2 = google.auth.OAuth2;
 
 async function downloadVideoBuffer(videoUrl: string): Promise<Buffer> {
   const res = await fetch(videoUrl);
@@ -11,11 +14,21 @@ async function downloadVideoBuffer(videoUrl: string): Promise<Buffer> {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
+
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to upload a video.' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -27,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { videoUrl, title, description } = body;
+  const { videoUrl, title, description, tags, privacyStatus, madeForKids } = body;
   if (!videoUrl || !title) {
     return NextResponse.json({ error: 'Missing videoUrl or title.' }, { status: 400 });
   }
@@ -40,15 +53,16 @@ export async function POST(req: NextRequest) {
   }
   const refreshToken = decodeURIComponent(match[1]);
 
-  const oauth2Client = new google.auth.OAuth2(
+  const oauth2Client = new OAuth2(
     clientId,
     clientSecret,
     redirectUri
   );
   oauth2Client.setCredentials({ refresh_token: refreshToken });
-  await oauth2Client.getAccessToken(); // Ensures access token is fresh
 
   try {
+    await oauth2Client.getAccessToken(); // Ensures access token is fresh
+
     const videoBuffer = await downloadVideoBuffer(videoUrl);
     const videoStream = Readable.from(videoBuffer);
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
@@ -58,9 +72,11 @@ export async function POST(req: NextRequest) {
         snippet: {
           title,
           description: description || '',
+          tags: tags || [],
         },
         status: {
-          privacyStatus: 'public',
+          privacyStatus: privacyStatus || 'private',
+          selfDeclaredMadeForKids: madeForKids || false,
         },
       },
       media: {
@@ -69,6 +85,9 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ videoId: res.data.id });
   } catch (err: any) {
+    if (err.message && err.message.includes('invalid_grant')) {
+      return NextResponse.json({ error: 'youtube_token_invalid' }, { status: 401 });
+    }
     return NextResponse.json({ error: 'Failed to upload video', details: String(err) }, { status: 500 });
   }
 } 

@@ -2,17 +2,19 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '../context/UserContext';
-import { supabase } from '../utils/supabaseClient';
+import { createSupabaseBrowserClient } from '../utils/supabaseClient';
 import { useRouter } from 'next/navigation';
 
 export default function Header() {
   const { user } = useUser();
   const router = useRouter();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const supabase = createSupabaseBrowserClient();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push('/');
+    router.refresh();
   };
 
   return (

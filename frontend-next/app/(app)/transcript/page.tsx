@@ -1,6 +1,7 @@
 // This page and all UI should use a dark theme by default.
 "use client";
 import React, { useState } from "react";
+import apiClient from '@/utils/apiClient';
 
 export default function TranscriptPage() {
   const [url, setUrl] = useState("");
@@ -14,19 +15,10 @@ export default function TranscriptPage() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/extract-transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.message || "Failed to extract transcript.");
-      } else {
-        setResult(data);
-      }
+      const response = await apiClient.post('/extract-transcript', { url });
+      setResult(response.data);
     } catch (err: any) {
-      setError(err.message || "Unknown error");
+      setError(err.response?.data?.error || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }

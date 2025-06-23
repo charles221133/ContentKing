@@ -1,12 +1,25 @@
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
 // Remove cache
 // let newsCache: { newsStories: { headline: string; summary: string }[]; timestamp: number } | null = null;
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in ms
 
 export async function GET(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
@@ -140,7 +153,7 @@ export async function GET(req: NextRequest) {
     // Remove cache assignment
     // newsCache = { newsStories, timestamp: Date.now() };
 
-    return NextResponse.json({ newsStories, cached: false }, {
+    return NextResponse.json({ headlines: newsStories }, {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' },
     });

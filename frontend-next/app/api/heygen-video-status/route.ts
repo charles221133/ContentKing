@@ -1,16 +1,25 @@
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
 
-export async function GET(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+export async function POST(req: NextRequest) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to check video status.' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(req.url);
-  const videoId = searchParams.get('videoId');
+  const { videoId } = await req.json();
 
   if (!videoId) {
     return NextResponse.json({ error: 'video_id is invalid: field required', status: 'failed' }, { status: 400 });
@@ -44,9 +53,9 @@ export async function GET(req: NextRequest) {
     // Map the response to our expected format
     return NextResponse.json({
       status: data.data?.status || 'unknown',
-      videoUrl: data.data?.video_url,
-      thumbnailUrl: data.data?.thumbnail_url,
-      gifUrl: data.data?.gif_url,
+      video_url: data.data?.video_url,
+      thumbnail_url: data.data?.thumbnail_url,
+      gif_url: data.data?.gif_url,
       error: data.data?.error
     });
   } catch (error: any) {

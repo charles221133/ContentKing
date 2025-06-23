@@ -1,12 +1,23 @@
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/utils/supabaseServer';
+import { stripJokeTags } from '@/utils/textUtils';
 
 export async function POST(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+      },
+    }
+  );
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized', message: 'You must be logged in to generate a video.' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -22,6 +33,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing HeyGen API key.' }, { status: 500 });
     }
 
+    const scriptWithoutJokes = stripJokeTags(script);
+
     const payload = {
       video_inputs: [
         {
@@ -35,7 +48,7 @@ export async function POST(req: NextRequest) {
           voice: {
             type: "text",
             voice_id: voice_id,
-            input_text: script,
+            input_text: scriptWithoutJokes,
             speed: 1.0,
             pitch: 0
           },
@@ -46,8 +59,8 @@ export async function POST(req: NextRequest) {
         }
       ],
       dimension: {
-        width: 1280,
-        height: 720
+        width: 1080,
+        height: 1920
       },
       caption: false
     };
