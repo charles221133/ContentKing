@@ -2,8 +2,10 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../utils/supabaseClient";
+import { createSupabaseBrowserClient } from "../../utils/supabaseClient";
 import { useUser } from "../../context/UserContext";
+
+const supabase = createSupabaseBrowserClient();
 
 export default function SignupPage() {
   const { user, loading: userLoading } = useUser();

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import type { PromptScript, YouTubePublishSettings } from '@/types';
 import apiClient from '@/utils/apiClient';
 import YouTubePublishModal from '@/components/YouTubePublishModal';
+import { FiUploadCloud } from 'react-icons/fi';
+import ReplaceVideoModal from '../../../components/ReplaceVideoModal';
 
 const PLATFORMS = [
   { key: 'youtube', label: 'YouTube' },
@@ -20,6 +22,7 @@ export default function PublishPage() {
   const [publishing, setPublishing] = useState<{ [platform: string]: boolean }>({});
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showReplaceModal, setShowReplaceModal] = useState(false);
 
   useEffect(() => {
     async function loadScripts() {
@@ -136,7 +139,25 @@ export default function PublishPage() {
 
   return (
     <div style={{ padding: 32, maxWidth: 700, margin: '0 auto' }}>
-      <h1>Publish a Script</h1>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <h1 style={{ marginRight: 12 }}>Publish a Script</h1>
+        <button
+          onClick={() => setShowReplaceModal(true)}
+          title="Upload a replacement video"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 4,
+            display: 'flex',
+            alignItems: 'center',
+            color: '#38bdf8',
+            fontSize: 24
+          }}
+        >
+          <FiUploadCloud />
+        </button>
+      </div>
 
       {scripts.length === 0 ? (
         <div>You have no scripts to publish yet. Go create one!</div>
@@ -219,6 +240,20 @@ export default function PublishPage() {
         onPublish={handleYouTubePublish}
         script={selectedScript}
       />
+      {showReplaceModal && (
+        <ReplaceVideoModal
+          isOpen={showReplaceModal}
+          onClose={() => setShowReplaceModal(false)}
+          script={selectedScript}
+          onVideoReplaced={newUrl => {
+            // Update the selected script's video_url in state
+            if (selectedScript) {
+              setSelectedScript({ ...selectedScript, video_url: newUrl });
+            }
+            setShowReplaceModal(false);
+          }}
+        />
+      )}
     </div>
   );
 } 
