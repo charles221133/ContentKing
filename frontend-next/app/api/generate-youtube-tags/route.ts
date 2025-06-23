@@ -3,17 +3,18 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import openai from '@/utils/openai';
 
-const YOUTUBE_DESCRIPTION_PROMPT = `
-Generate a compelling YouTube description based on the provided script.
-The description should be engaging, SEO-friendly, and include relevant keywords.
-It should have a clear call-to-action.
-Format the output as a single block of text. Do not include a title or subject line.
+const YOUTUBE_TAGS_PROMPT = `
+Generate a list of relevant, SEO-friendly YouTube tags based on the provided script.
+The output should be a single, comma-separated string of tags.
+Do not include any other text, titles, or explanations. Just the tags.
+
+Example output:
+tag one,tag two,another tag,keyword
 
 Script:
 ---
 {script}
 ---
-Keywords: {keywords}
 `;
 
 export async function POST(req: NextRequest) {
@@ -34,26 +35,24 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { script, keywords } = await req.json();
+    const { script } = await req.json();
 
     if (!script) {
       return NextResponse.json({ error: 'Script is required' }, { status: 400 });
     }
 
-    const prompt = YOUTUBE_DESCRIPTION_PROMPT
-      .replace('{script}', script)
-      .replace('{keywords}', (keywords || []).join(', '));
+    const prompt = YOUTUBE_TAGS_PROMPT.replace('{script}', script);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
     });
 
-    const description = completion.choices[0]?.message?.content?.trim();
+    const tags = completion.choices[0]?.message?.content?.trim();
 
-    return NextResponse.json({ description }, { status: 200 });
+    return NextResponse.json({ tags }, { status: 200 });
   } catch (err: any) {
-    console.error('Error generating description:', err);
-    return NextResponse.json({ error: 'Failed to generate description', details: err.message }, { status: 500 });
+    console.error('Error generating tags:', err);
+    return NextResponse.json({ error: 'Failed to generate tags', details: err.message }, { status: 500 });
   }
 } 

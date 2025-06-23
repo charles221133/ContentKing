@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { videoUrl, title, description } = body;
+  const { videoUrl, title, description, tags, privacyStatus, madeForKids } = body;
   if (!videoUrl || !title) {
     return NextResponse.json({ error: 'Missing videoUrl or title.' }, { status: 400 });
   }
@@ -59,9 +59,10 @@ export async function POST(req: NextRequest) {
     redirectUri
   );
   oauth2Client.setCredentials({ refresh_token: refreshToken });
-  await oauth2Client.getAccessToken(); // Ensures access token is fresh
 
   try {
+    await oauth2Client.getAccessToken(); // Ensures access token is fresh
+
     const videoBuffer = await downloadVideoBuffer(videoUrl);
     const videoStream = Readable.from(videoBuffer);
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
@@ -71,9 +72,11 @@ export async function POST(req: NextRequest) {
         snippet: {
           title,
           description: description || '',
+          tags: tags || [],
         },
         status: {
-          privacyStatus: 'public',
+          privacyStatus: privacyStatus || 'private',
+          selfDeclaredMadeForKids: madeForKids || false,
         },
       },
       media: {
@@ -82,6 +85,9 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ videoId: res.data.id });
   } catch (err: any) {
+    if (err.message && err.message.includes('invalid_grant')) {
+      return NextResponse.json({ error: 'youtube_token_invalid' }, { status: 401 });
+    }
     return NextResponse.json({ error: 'Failed to upload video', details: String(err) }, { status: 500 });
   }
 } 

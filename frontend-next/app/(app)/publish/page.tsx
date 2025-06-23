@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { PromptScript } from '@/types';
+import type { PromptScript, YouTubePublishSettings } from '@/types';
 import apiClient from '@/utils/apiClient';
+import YouTubePublishModal from '@/components/YouTubePublishModal';
 
 const PLATFORMS = [
   { key: 'youtube', label: 'YouTube' },
@@ -18,6 +19,7 @@ export default function PublishPage() {
   const [status, setStatus] = useState<{ [platform: string]: string }>({});
   const [publishing, setPublishing] = useState<{ [platform: string]: boolean }>({});
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadScripts() {
@@ -68,32 +70,52 @@ export default function PublishPage() {
     }
   };
 
+  const handleYouTubePublish = async (settings: YouTubePublishSettings) => {
+    if (!selectedScript) return;
+    const platform = 'youtube';
+
+    setPublishing((prev) => ({ ...prev, [platform]: true }));
+    setIsModalOpen(false);
+
+    try {
+      const res = await apiClient.post('/youtube/upload', {
+        videoUrl: selectedScript.video_url,
+        ...settings
+      });
+      const data = res.data;
+      setStatus((prev) => ({ ...prev, [platform]: 'Published' }));
+      setYoutubeVideoId(data.videoId);
+    } catch (err: any) {
+      if (err.isYouTubeAuthError) {
+        console.log('Handling YouTube auth error in UI. Opening popup.');
+        const popup = window.open('/api/youtube/auth', 'youtube-auth', 'width=600,height=700');
+        
+        // Listen for message from popup
+        const handleAuthMessage = (event: MessageEvent) => {
+          if (event.source === popup && event.data.youtubeAuth) {
+            console.log('YouTube auth successful, re-trying publish.');
+            // Re-call this function to try publishing again
+            handleYouTubePublish(settings);
+            window.removeEventListener('message', handleAuthMessage);
+            popup?.close();
+          }
+        };
+        window.addEventListener('message', handleAuthMessage, false);
+
+        setStatus((prev) => ({ ...prev, [platform]: 'Authentication required' }));
+      } else if (err.response?.status !== 401) {
+        setStatus((prev) => ({ ...prev, [platform]: 'Failed' }));
+      }
+    } finally {
+      setPublishing((prev) => ({ ...prev, [platform]: false }));
+    }
+  };
+
   const handlePublish = async (platform: string) => {
     if (!selectedScript) return;
 
     if (platform === 'youtube') {
-      setPublishing((prev) => ({ ...prev, [platform]: true }));
-      // Try to upload, if not authenticated, start OAuth
-      const upload = async () => {
-        try {
-          const res = await apiClient.post('/youtube/upload', {
-            videoUrl: selectedScript.video_url,
-            title: selectedScript.name || 'Untitled Video',
-            description: selectedScript.description || ''
-          });
-          const data = res.data;
-          setStatus((prev) => ({ ...prev, [platform]: 'Published' }));
-          setYoutubeVideoId(data.videoId);
-        } catch (err: any) {
-          // The interceptor will handle 401s automatically
-          if (err.response?.status !== 401) {
-            setStatus((prev) => ({ ...prev, [platform]: 'Failed' }));
-          }
-        } finally {
-          setPublishing((prev) => ({ ...prev, [platform]: false }));
-        }
-      };
-      await upload();
+      setIsModalOpen(true);
       return;
     }
     // Simulate for other platforms
@@ -191,6 +213,12 @@ export default function PublishPage() {
           )}
         </>
       )}
+      <YouTubePublishModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onPublish={handleYouTubePublish}
+        script={selectedScript}
+      />
     </div>
   );
 } 

@@ -11,3 +11,11 @@ export type PromptScript = {
   video_url?: string;
   status?: { [platform: string]: string };
 };
+
+export interface YouTubePublishSettings {
+  title: string;
+  description: string;
+  tags: string[];
+  privacyStatus: 'private' | 'public' | 'unlisted';
+  madeForKids: boolean;
+}

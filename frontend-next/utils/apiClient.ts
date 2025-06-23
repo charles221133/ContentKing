@@ -16,13 +16,24 @@ apiClient.interceptors.response.use(
   (response) => response,
   // Any status codes that falls outside the range of 2xx cause this function to trigger
   async (error) => {
-    if (error.response && error.response.status === 401) {
-      console.log('Caught a 401 Unauthorized error. Signing out...');
-      // If we get a 401, the session is invalid.
-      // Sign the user out and redirect to the login page.
-      await supabase.auth.signOut();
-      // Use window.location to force a full page reload, clearing any component state.
-      window.location.href = '/login';
+    const originalRequest = error.config;
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const errorData = error.response.data;
+
+      // Check for specific YouTube token error
+      if (errorData.error === 'youtube_token_invalid') {
+        console.log('YouTube token invalid. Flagging error for UI handling.');
+        // Add a flag to the error object so the UI can identify it
+        error.isYouTubeAuthError = true;
+        // Reject the promise so the calling component can catch it and handle the UI
+        return Promise.reject(error);
+      } else {
+        console.log('Caught a general 401 Unauthorized error. Signing out...');
+        // If it's a general 401, the session is invalid.
+        await supabase.auth.signOut();
+        window.location.href = '/login';
+      }
     }
     // For any other errors, just pass them along.
     return Promise.reject(error);
