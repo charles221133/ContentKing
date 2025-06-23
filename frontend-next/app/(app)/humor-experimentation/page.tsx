@@ -545,6 +545,34 @@ export default function HumorExperimentationPage() {
     }, 5000); // Poll every 5 seconds
   };
 
+  const handleDeleteVideo = async (scriptId: string) => {
+    if (!selectedScript) return;
+
+    // Optimistically update UI
+    const originalScript = { ...selectedScript };
+    const updatedScript = { ...selectedScript, video_url: null };
+    
+    setSavedScripts(prev => prev.map(s => s.id === scriptId ? updatedScript : s));
+    setSelectedScript(updatedScript);
+    setVideoState(prev => {
+        const newState = { ...prev };
+        delete newState[scriptId];
+        return newState;
+    });
+
+    try {
+      // Call the existing save endpoint with the cleared video_url
+      await apiClient.post('/save-script', { script: updatedScript });
+    } catch (error) {
+      console.error('Failed to delete video on server:', error);
+      // Revert UI on error
+      setSavedScripts(prev => prev.map(s => s.id === scriptId ? originalScript : s));
+      setSelectedScript(originalScript);
+      // You might want to add back the video state here if needed
+      alert('Failed to delete the video. Please try again.');
+    }
+  };
+
   const handleOutputAssets = async () => {
     setAvatarsLoading(true);
     setAvatarsError(null);
@@ -966,21 +994,28 @@ export default function HumorExperimentationPage() {
               <div className={styles.videoPlayerContainer}>
                 {/* Publish Button Overlay */}
                 <button
-                  className={styles.publishVideoButton}
+                  className={`${styles.iconButton} ${styles.publishIconButton}`}
                   onClick={() => {
                     if (selectedScript?.name) {
                       window.location.href = `/publish?scriptName=${encodeURIComponent(selectedScript.name)}`;
                     }
                   }}
-                  title="Publish this video"
+                  title="Publish"
                 >
-                  Publish
+                  ✈️
                 </button>
                 <video 
                   src={videoState[selectedScript.id]?.videoUrl || selectedScript.video_url} 
                   controls 
                   className={styles.videoPlayer}
                 />
+                <button
+                  className={`${styles.iconButton} ${styles.deleteVideoButton}`}
+                  onClick={() => handleDeleteVideo(selectedScript.id)}
+                  title="Delete Video"
+                >
+                  🗑️
+                </button>
               </div>
             ) : null}
             {videoState[selectedScript?.id]?.error && (
