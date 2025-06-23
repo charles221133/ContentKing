@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     const command = new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET_NAME!,
+      Bucket: process.env.NEXT_PUBLIC_S3_BUCKET!,
       Key: `${user.id}/${fileName}`,
       ContentType: fileType,
     });
