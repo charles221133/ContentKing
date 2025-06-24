@@ -6,12 +6,8 @@ import apiClient from '@/utils/apiClient';
 import YouTubePublishModal from '@/components/YouTubePublishModal';
 import { FiUploadCloud } from 'react-icons/fi';
 import ReplaceVideoModal from '../../../components/ReplaceVideoModal';
-
-const PLATFORMS = [
-  { key: 'youtube', label: 'YouTube' },
-  // { key: 'tiktok', label: 'TikTok' },
-  // { key: 'linkedin', label: 'LinkedIn' },
-];
+import TikTokPublishModal, { TikTokPublishSettings } from '../../../components/TikTokPublishModal';
+import Cookies from 'js-cookie';
 
 export default function PublishPage() {
   const [scripts, setScripts] = useState<PromptScript[]>([]);
@@ -23,6 +19,7 @@ export default function PublishPage() {
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showReplaceModal, setShowReplaceModal] = useState(false);
+  const [isTikTokModalOpen, setIsTikTokModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadScripts() {
@@ -114,6 +111,54 @@ export default function PublishPage() {
     }
   };
 
+  const handleTikTokPublish = async (settings: TikTokPublishSettings) => {
+    if (!selectedScript) return;
+    setPublishing((prev) => ({ ...prev, tiktok: true }));
+    setIsTikTokModalOpen(false);
+
+    // Check for TikTok access token
+    let accessToken = Cookies.get('tiktok_access_token');
+    if (!accessToken) {
+      // Open TikTok OAuth popup
+      const popup = window.open('/api/tiktok/auth', 'tiktok-auth', 'width=600,height=700');
+      // Listen for cookie set (polling)
+      const poll = setInterval(() => {
+        accessToken = Cookies.get('tiktok_access_token');
+        if (accessToken) {
+          clearInterval(poll);
+          popup?.close();
+          actuallyPublish();
+        }
+      }, 500);
+      // Fallback: after 2 minutes, stop polling
+      setTimeout(() => clearInterval(poll), 120000);
+      return;
+    }
+    actuallyPublish();
+
+    async function actuallyPublish() {
+      if (!selectedScript) return;
+      try {
+        const res = await apiClient.post('/tiktok/upload', {
+          accessToken,
+          video_url: selectedScript.video_url,
+          title: settings.title,
+          privacy_level: settings.privacyStatus === 'public' ? 'PUBLIC_TO_EVERYONE' : settings.privacyStatus === 'unlisted' ? 'MUTUAL_FOLLOW_FRIENDS' : 'SELF_ONLY',
+          // Add more fields as needed
+        });
+        if (res.data.error && res.data.error.code !== 'ok') {
+          setStatus((prev) => ({ ...prev, tiktok: 'Failed' }));
+        } else {
+          setStatus((prev) => ({ ...prev, tiktok: 'Published' }));
+        }
+      } catch (err) {
+        setStatus((prev) => ({ ...prev, tiktok: 'Failed' }));
+      } finally {
+        setPublishing((prev) => ({ ...prev, tiktok: false }));
+      }
+    }
+  };
+
   const handlePublish = async (platform: string) => {
     if (!selectedScript) return;
 
@@ -192,43 +237,70 @@ export default function PublishPage() {
                 </div>
               )}
 
+              {/* YouTube panel */}
               <div style={{ marginTop: 16 }}>
-                {PLATFORMS.map((platform) => (
-                  <div key={platform.key} style={{ display: 'flex', alignItems: 'center', marginBottom: 20, background: '#23232a', borderRadius: 8, padding: 16 }}>
-                    <span style={{ width: 180, fontWeight: 600, color: '#fff' }}>
-                      {platform.label}
-                    </span>
-                    <span style={{ marginRight: 16, color: status[platform.key] === 'Published' ? '#22c55e' : '#fbbf24', minWidth: 100 }}>
-                      {status[platform.key] || 'Not published'}
-                      {platform.key === 'youtube' && status[platform.key] === 'Published' && youtubeVideoId && (
-                        <a
-                          href={`https://youtube.com/watch?v=${youtubeVideoId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: '#38bdf8', marginLeft: 12, textDecoration: 'underline', fontWeight: 500 }}
-                        >
-                          View on YouTube
-                        </a>
-                      )}
-                    </span>
-                    <button
-                      onClick={() => handlePublish(platform.key)}
-                      disabled={publishing[platform.key] || !selectedScript.video_url}
-                      style={{
-                        padding: '10px 20px',
-                        background: '#2563eb',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        opacity: publishing[platform.key] || !selectedScript.video_url ? 0.5 : 1,
-                        marginLeft: 'auto'
-                      }}
-                    >
-                      {publishing[platform.key] ? 'Publishing...' : 'Publish'}
-                    </button>
-                  </div>
-                ))}
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, background: '#23232a', borderRadius: 8, padding: 16 }}>
+                  <span style={{ width: 180, fontWeight: 600, color: '#fff' }}>
+                    YouTube
+                  </span>
+                  <span style={{ marginRight: 16, color: status['youtube'] === 'Published' ? '#22c55e' : '#fbbf24', minWidth: 100 }}>
+                    {status['youtube'] || 'Not published'}
+                    {status['youtube'] === 'Published' && youtubeVideoId && (
+                      <a
+                        href={`https://youtube.com/watch?v=${youtubeVideoId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#38bdf8', marginLeft: 12, textDecoration: 'underline', fontWeight: 500 }}
+                      >
+                        View on YouTube
+                      </a>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    disabled={publishing['youtube'] || !selectedScript?.video_url}
+                    style={{
+                      padding: '10px 20px',
+                      background: '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      opacity: publishing['youtube'] || !selectedScript?.video_url ? 0.5 : 1,
+                      marginLeft: 'auto'
+                    }}
+                  >
+                    {publishing['youtube'] ? 'Publishing...' : 'Publish'}
+                  </button>
+                </div>
+              </div>
+
+              {/* TikTok panel */}
+              <div style={{ marginTop: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, background: '#23232a', borderRadius: 8, padding: 16 }}>
+                  <span style={{ width: 180, fontWeight: 600, color: '#fff' }}>
+                    TikTok
+                  </span>
+                  <span style={{ marginRight: 16, color: status['tiktok'] === 'Published' ? '#22c55e' : '#fbbf24', minWidth: 100 }}>
+                    {status['tiktok'] || 'Not published'}
+                  </span>
+                  <button
+                    onClick={() => setIsTikTokModalOpen(true)}
+                    disabled={publishing['tiktok'] || !selectedScript?.video_url}
+                    style={{
+                      padding: '10px 20px',
+                      background: '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      opacity: publishing['tiktok'] || !selectedScript?.video_url ? 0.5 : 1,
+                      marginLeft: 'auto'
+                    }}
+                  >
+                    {publishing['tiktok'] ? 'Publishing...' : 'Publish'}
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -252,6 +324,14 @@ export default function PublishPage() {
             }
             setShowReplaceModal(false);
           }}
+        />
+      )}
+      {isTikTokModalOpen && (
+        <TikTokPublishModal
+          isOpen={isTikTokModalOpen}
+          onClose={() => setIsTikTokModalOpen(false)}
+          script={selectedScript}
+          onPublish={handleTikTokPublish}
         />
       )}
     </div>
