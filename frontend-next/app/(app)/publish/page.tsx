@@ -8,6 +8,7 @@ import { FiUploadCloud } from 'react-icons/fi';
 import ReplaceVideoModal from '../../../components/ReplaceVideoModal';
 import TikTokPublishModal, { TikTokPublishSettings } from '../../../components/TikTokPublishModal';
 import Cookies from 'js-cookie';
+import InstagramPublishModal, { InstagramPublishSettings } from '../../../components/InstagramPublishModal';
 
 export default function PublishPage() {
   const [scripts, setScripts] = useState<PromptScript[]>([]);
@@ -20,6 +21,7 @@ export default function PublishPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [isTikTokModalOpen, setIsTikTokModalOpen] = useState(false);
+  const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadScripts() {
@@ -155,6 +157,52 @@ export default function PublishPage() {
         setStatus((prev) => ({ ...prev, tiktok: 'Failed' }));
       } finally {
         setPublishing((prev) => ({ ...prev, tiktok: false }));
+      }
+    }
+  };
+
+  const handleInstagramPublish = async (settings: InstagramPublishSettings) => {
+    if (!selectedScript) return;
+    setPublishing((prev) => ({ ...prev, instagram: true }));
+    setIsInstagramModalOpen(false);
+
+    // Check for Instagram access token
+    let accessToken = Cookies.get('instagram_access_token');
+    if (!accessToken) {
+      // Open Instagram OAuth popup
+      const popup = window.open('/api/instagram/auth', 'instagram-auth', 'width=600,height=700');
+      // Listen for cookie set (polling)
+      const poll = setInterval(() => {
+        accessToken = Cookies.get('instagram_access_token');
+        if (accessToken) {
+          clearInterval(poll);
+          popup?.close();
+          actuallyPublish();
+        }
+      }, 500);
+      // Fallback: after 2 minutes, stop polling
+      setTimeout(() => clearInterval(poll), 120000);
+      return;
+    }
+    actuallyPublish();
+
+    async function actuallyPublish() {
+      if (!selectedScript) return;
+      try {
+        const res = await apiClient.post('/instagram/upload', {
+          accessToken,
+          video_url: selectedScript.video_url,
+          caption: settings.caption,
+        });
+        if (res.data.error && res.data.error.code !== 'ok') {
+          setStatus((prev) => ({ ...prev, instagram: 'Failed' }));
+        } else {
+          setStatus((prev) => ({ ...prev, instagram: 'Published' }));
+        }
+      } catch (err) {
+        setStatus((prev) => ({ ...prev, instagram: 'Failed' }));
+      } finally {
+        setPublishing((prev) => ({ ...prev, instagram: false }));
       }
     }
   };
@@ -302,6 +350,34 @@ export default function PublishPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Instagram panel */}
+              <div style={{ marginTop: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, background: '#23232a', borderRadius: 8, padding: 16 }}>
+                  <span style={{ width: 180, fontWeight: 600, color: '#fff' }}>
+                    Instagram
+                  </span>
+                  <span style={{ marginRight: 16, color: status['instagram'] === 'Published' ? '#22c55e' : '#fbbf24', minWidth: 100 }}>
+                    {status['instagram'] || 'Not published'}
+                  </span>
+                  <button
+                    onClick={() => setIsInstagramModalOpen(true)}
+                    disabled={publishing['instagram'] || !selectedScript?.video_url}
+                    style={{
+                      padding: '10px 20px',
+                      background: '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      opacity: publishing['instagram'] || !selectedScript?.video_url ? 0.5 : 1,
+                      marginLeft: 'auto'
+                    }}
+                  >
+                    {publishing['instagram'] ? 'Publishing...' : 'Publish'}
+                  </button>
+                </div>
+              </div>
             </>
           )}
         </>
@@ -332,6 +408,14 @@ export default function PublishPage() {
           onClose={() => setIsTikTokModalOpen(false)}
           script={selectedScript}
           onPublish={handleTikTokPublish}
+        />
+      )}
+      {isInstagramModalOpen && (
+        <InstagramPublishModal
+          isOpen={isInstagramModalOpen}
+          onClose={() => setIsInstagramModalOpen(false)}
+          script={selectedScript}
+          onPublish={handleInstagramPublish}
         />
       )}
     </div>

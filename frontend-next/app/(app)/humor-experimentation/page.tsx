@@ -307,9 +307,11 @@ export default function HumorExperimentationPage() {
       const data = res.data;
       const updatedScript = {
         ...selectedScript,
-        rewritten: data.script,
+        rewritten: data.rewritten,
         user_style: rewriteStyle,
       };
+      // Save to backend
+      await apiClient.post('/save-script', { script: updatedScript });
       // Update script in main list
       setSavedScripts(prev => prev.map(s => s.id === data.savedScriptId ? updatedScript : s));
       // Update selected script
@@ -460,7 +462,11 @@ export default function HumorExperimentationPage() {
 
   // Handler for generating video from rewritten script
   const handleGenerateVideo = async (scriptId: string) => {
-    const script = savedScripts.find(s => s.id === scriptId);
+    console.log("scriptId:", scriptId);
+    console.log("savedScripts ids:", savedScripts.map(s => s.id));
+    const script = savedScripts.find(s => String(s.id) === String(scriptId));
+    console.log("found script:", script);
+    console.log("script.rewritten:", script?.rewritten);
     if (!script || !script.rewritten) {
       alert("Script not found or no rewritten version available!");
       return;
@@ -585,6 +591,14 @@ export default function HumorExperimentationPage() {
       
       console.log("Available Avatars:", avatarsRes.data.avatars);
       console.log('Available Voices:', voicesRes.data.voices);
+      // Attempt to filter custom avatars
+      const avatars = avatarsRes.data.avatars;
+      const customAvatars = avatars.filter((a: any) =>
+        (a.type && a.type.toLowerCase().includes('custom')) ||
+        (a.is_custom === true) ||
+        (a.name && a.name.toLowerCase().includes('custom'))
+      );
+      console.log('Custom Avatars:', customAvatars);
 
     } catch (err: any) {
       console.error("Failed to fetch assets:", err);

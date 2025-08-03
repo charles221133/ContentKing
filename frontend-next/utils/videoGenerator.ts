@@ -1,6 +1,6 @@
 // --- Hardcoded values for video generation ---
 // Replace "YOUR_VOICE_ID_HERE" with the correct ID for your specific voice.
-const AVATAR_ID = "Miles_standing_sofa_side";
+const AVATAR_ID = "253e76fb0cd44723ac97b06d8508760a";
 const VOICE_ID = "9ff7fd2dd9114c3bae005e62aa485e52";
 
 interface VideoRequestBody {

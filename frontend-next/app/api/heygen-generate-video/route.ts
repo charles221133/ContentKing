@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
     if (!script || typeof script !== 'string' || !script.trim()) {
       return NextResponse.json({ error: 'Missing or invalid script.' }, { status: 400 });
     }
-    if (!avatar_id || !voice_id) {
-      return NextResponse.json({ error: 'Missing avatar_id or voice_id.' }, { status: 400 });
+    if (!avatar_id) {
+      return NextResponse.json({ error: 'Missing avatar_id.' }, { status: 400 });
     }
     const apiKey = process.env.HEYGEN_API_KEY;
     if (!apiKey) {
@@ -35,29 +35,32 @@ export async function POST(req: NextRequest) {
 
     const scriptWithoutJokes = stripJokeTags(script);
 
+    // Build video input, conditionally include voice block
+    const videoInput: any = {
+      character: {
+        type: "avatar",
+        avatar_id: avatar_id,
+        avatar_style: "normal",
+        scale: 1.0,
+        offset: { x: 0.0, y: 0.0 }
+      },
+      background: {
+        type: "color",
+        value: "#87CEEB"
+      }
+    };
+    if (voice_id) {
+      videoInput.voice = {
+        type: "text",
+        voice_id: voice_id,
+        input_text: scriptWithoutJokes,
+        speed: 1.0,
+        pitch: 0
+      };
+    }
+
     const payload = {
-      video_inputs: [
-        {
-          character: {
-            type: "avatar",
-            avatar_id: avatar_id,
-            avatar_style: "normal",
-            scale: 1.0,
-            offset: { x: 0.0, y: 0.0 }
-          },
-          voice: {
-            type: "text",
-            voice_id: voice_id,
-            input_text: scriptWithoutJokes,
-            speed: 1.0,
-            pitch: 0
-          },
-          background: {
-            type: "color",
-            value: "#87CEEB"
-          }
-        }
-      ],
+      video_inputs: [videoInput],
       dimension: {
         width: 1080,
         height: 1920

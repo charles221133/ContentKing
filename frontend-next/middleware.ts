@@ -44,6 +44,31 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Allow health check and site-down page to always load
+  if (pathname.startsWith('/api/health') || pathname.startsWith('/site-down')) {
+    return NextResponse.next();
+  }
+
+  // Use safer origin calculation
+  const host = request.headers.get('host');
+  const origin = host ? `http://${host}` : 'http://localhost:3000';
+
+  // Add timeout to health check fetch
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+  try {
+    const res = await fetch(`${origin}/api/health`, { method: 'GET', signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      // Health check failed, redirect to /site-down
+      return NextResponse.redirect(`${origin}/site-down`);
+    }
+  } catch {
+    clearTimeout(timeout);
+    // Network or other error, redirect to /site-down
+    return NextResponse.redirect(`${origin}/site-down`);
+  }
+
   // If user is not logged in and is trying to access a protected route, redirect to login
   if (!user && (pathname.startsWith('/dashboard') || pathname.startsWith('/humor-experimentation') || pathname.startsWith('/publish') || pathname.startsWith('/settings') || pathname === '/')) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -69,8 +94,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - site-down (site-down page)
+     * - api/health (health check)
      * Feel free to modify this pattern to include more paths.
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|site-down|api/health).*)',
   ],
 } 

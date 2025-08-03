@@ -53,11 +53,12 @@ export const personalizeScriptPrompt = new Prompt({
   "${script}",
   "",
   "### OUTPUT RULES",
-  "1  Return a single, cohesive rewritten script.",
-  "2  Embed punchlines naturally within the text, wrapped in '<joke>…</joke>' tags.",
-  "3  Vary your joke framework across the four versions (pick from: Rule-of-Three, Misdirection, Hyperbolic-Analogy, Callback).",
-  "4  Punchline ≤ 15 words, punchy one-liner.",
-  "6 In the rewrites, if possible try referencing an item from NEWS NUGGETS *or* a classic dev pain-point.",
+  "1. Return a single, cohesive rewritten script.",
+  "2. Embed punchlines naturally within the text, wrapped in '<joke>…</joke>' tags.",
+  "3. Do NOT include any explanations, markdown, introductory or closing remarks, or any extra formatting. Output ONLY the rewritten script text itself.",
+  "4. Do not include any --- separators, headings, or JSON formatting. Only output the script.",
+  "5. Punchline ≤ 15 words, punchy one-liner.",
+  "6. In the rewrite, if possible, try referencing an item from NEWS NUGGETS *or* a classic dev pain-point.",
   "",
   "### SELF-CHECK (internal)",
   "• Think through setup → punchline before writing.",
@@ -69,7 +70,7 @@ export const personalizeScriptPrompt = new Prompt({
 ]`;
   },
   details: 'Rewrites a given script in a specified style.',
-  version: '1.2',
+  version: '1.3',
 });
 
 export const generateVariantsPrompt = new Prompt({
