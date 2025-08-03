@@ -1,6 +1,47 @@
 /* Styles for HumorExperimentationPage */
 /* We will populate this file in the next steps. */
 
+/* Custom Tooltip Styles */
+.tooltipContainer {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0s, visibility 0s;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.tooltipContainer:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #000 transparent transparent transparent;
+}
+
 /* General Page and Container Styles */
 .pageContainer {
   /* This class is for the top-level fragment, no specific styles needed unless for a wrapper div */
