@@ -1,0 +1,17 @@
+LLMs Used in This Project
+-------------------------
+
+1. OpenAI GPT-4 (via OpenAI API)
+   - Usage: Script generation, text summarization, and content suggestions.
+   - Endpoint: https://api.openai.com/v1/
+   - Compliance: User data sent to OpenAI is subject to OpenAI's privacy policy and terms of service.
+   - Attribution: © OpenAI, L.L.C.
+
+2. [Add additional LLMs here if used, e.g., Google Gemini, Anthropic Claude, etc.]
+
+Notes:
+- All AI-generated content is reviewed before publication.
+- No sensitive user data is sent to LLM providers without user consent.
+- For more information, see our privacy policy.
+
+Last updated: 2024-06-09 

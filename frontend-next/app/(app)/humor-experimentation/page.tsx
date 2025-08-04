@@ -10,6 +10,16 @@ import styles from './HumorExperimentation.module.css';
 import { stripTimestamps } from "@/utils/textUtils";
 import { createVideoRequestBody } from "@/utils/videoGenerator";
 
+// Custom Tooltip Component
+const Tooltip = ({ children, text }: { children: React.ReactNode; text: string }) => {
+  return (
+    <div className={styles.tooltipContainer}>
+      {children}
+      <div className={styles.tooltip}>{text}</div>
+    </div>
+  );
+};
+
 const DUMMY_SCRIPT = `This is the first paragraph of the script.
 Here is the second paragraph, which is a bit longer and more interesting.
 Finally, the third paragraph wraps things up with a punchline.`;
@@ -284,10 +294,17 @@ export default function HumorExperimentationPage() {
 
   // State for OpenAI conversion
   const handleConvertScript = () => {
+    console.log('🔧 Convert script button clicked:', {
+      selectedScript: selectedScript,
+      hasRewritten: !!selectedScript?.rewritten,
+      hasOriginal: !!selectedScript?.original
+    });
+    
     if (selectedScript) {
       const scriptText = selectedScript.rewritten || selectedScript.original || '';
       // Calculate word count by splitting on whitespace
       const wordCount = scriptText.trim().split(/\s+/).filter(Boolean).length;
+      console.log('📊 Calculated word count:', wordCount);
       setRewriteLength(wordCount);
     }
     setShowRewriteModal(true);
@@ -297,25 +314,57 @@ export default function HumorExperimentationPage() {
     if (!selectedScript) return;
     setRewriteLoading(true);
     setRewriteError(null);
+    
+    const requestPayload = {
+      script: selectedScript.original,
+      userStyle: rewriteStyle,
+      force: true,
+      newsNuggets: [],
+    };
+    
+    console.log('🚀 Sending rewrite request to backend:', {
+      url: '/personalize-script',
+      payload: requestPayload,
+      selectedScript: selectedScript,
+      rewriteStyle: rewriteStyle
+    });
+    
     try {
-      const res = await apiClient.post('/personalize-script', {
-        script: selectedScript.original,
-        userStyle: rewriteStyle,
-        force: true,
-        newsNuggets: [],
+      const res = await apiClient.post('/personalize-script', requestPayload);
+      console.log('✅ Rewrite response received:', {
+        status: res.status,
+        data: res.data,
+        headers: res.headers
       });
+      
       const data = res.data;
       const updatedScript = {
         ...selectedScript,
-        rewritten: data.script,
+        rewritten: data.rewritten,
         user_style: rewriteStyle,
       };
+      
+      console.log('💾 Saving updated script to backend:', updatedScript);
+      
+      // Save to backend
+      await apiClient.post('/save-script', { script: updatedScript });
+      
+      console.log('✅ Script saved successfully');
+      
       // Update script in main list
       setSavedScripts(prev => prev.map(s => s.id === data.savedScriptId ? updatedScript : s));
       // Update selected script
       setSelectedScript(updatedScript);
       setShowRewriteModal(false);
     } catch (err: any) {
+      console.error('❌ Rewrite request failed:', {
+        error: err,
+        message: err.message,
+        response: err.response,
+        status: err.response?.status,
+        data: err.response?.data
+      });
+      
       if (err.response?.status !== 401) {
         setRewriteError(err.response?.data?.error || "Failed to rewrite script.");
       }
@@ -460,7 +509,11 @@ export default function HumorExperimentationPage() {
 
   // Handler for generating video from rewritten script
   const handleGenerateVideo = async (scriptId: string) => {
-    const script = savedScripts.find(s => s.id === scriptId);
+    console.log("scriptId:", scriptId);
+    console.log("savedScripts ids:", savedScripts.map(s => s.id));
+    const script = savedScripts.find(s => String(s.id) === String(scriptId));
+    console.log("found script:", script);
+    console.log("script.rewritten:", script?.rewritten);
     if (!script || !script.rewritten) {
       alert("Script not found or no rewritten version available!");
       return;
@@ -585,6 +638,14 @@ export default function HumorExperimentationPage() {
       
       console.log("Available Avatars:", avatarsRes.data.avatars);
       console.log('Available Voices:', voicesRes.data.voices);
+      // Attempt to filter custom avatars
+      const avatars = avatarsRes.data.avatars;
+      const customAvatars = avatars.filter((a: any) =>
+        (a.type && a.type.toLowerCase().includes('custom')) ||
+        (a.is_custom === true) ||
+        (a.name && a.name.toLowerCase().includes('custom'))
+      );
+      console.log('Custom Avatars:', customAvatars);
 
     } catch (err: any) {
       console.error("Failed to fetch assets:", err);
@@ -600,45 +661,48 @@ export default function HumorExperimentationPage() {
     <>
       {/* Paste Transcript Button and Modal */}
       <div className={styles.controlsContainer}>
-        <button
-          onClick={() => setShowPasteModal(true)}
-          className={`${styles.actionButton} ${styles.pasteButton}`}
-          title="Paste a new transcript manually to create a new script."
-        >
-          Paste Transcript
-        </button>
-        <button
-          onClick={() => handleGenerateVideo(selectedScript?.id || "")}
-          disabled={
-            !selectedScript ||
-            !selectedScript.rewritten ||
-            videoState[selectedScript?.id]?.generating ||
-            !!videoState[selectedScript?.id]?.videoUrl ||
-            !!selectedScript.video_url
-          }
-          className={`${styles.actionButton} ${styles.generateVideoButton}`}
-          style={{
-            cursor: !selectedScript || !selectedScript.rewritten || videoState[selectedScript?.id]?.generating || !!videoState[selectedScript?.id]?.videoUrl || !!selectedScript.video_url ? "not-allowed" : "pointer",
-            opacity: !selectedScript || !selectedScript.rewritten || videoState[selectedScript?.id]?.generating || !!videoState[selectedScript?.id]?.videoUrl || !!selectedScript.video_url ? 0.7 : 1,
-          }}
-          title="Generate a video from the selected script."
-        >
-          {videoState[selectedScript?.id]?.generating ? 'Generating...' : 'Generate Video'}
-        </button>
+        <Tooltip text="Paste a new transcript manually to create a new script.">
+          <button
+            onClick={() => setShowPasteModal(true)}
+            className={`${styles.actionButton} ${styles.pasteButton}`}
+          >
+            Paste Transcript
+          </button>
+        </Tooltip>
+        <Tooltip text="Generate a video from the selected script.">
+          <button
+            onClick={() => handleGenerateVideo(selectedScript?.id || "")}
+            disabled={
+              !selectedScript ||
+              !selectedScript.rewritten ||
+              videoState[selectedScript?.id]?.generating ||
+              !!videoState[selectedScript?.id]?.videoUrl ||
+              !!selectedScript.video_url
+            }
+            className={`${styles.actionButton} ${styles.generateVideoButton}`}
+            style={{
+              cursor: !selectedScript || !selectedScript.rewritten || videoState[selectedScript?.id]?.generating || !!videoState[selectedScript?.id]?.videoUrl || !!selectedScript.video_url ? "not-allowed" : "pointer",
+              opacity: !selectedScript || !selectedScript.rewritten || videoState[selectedScript?.id]?.generating || !!videoState[selectedScript?.id]?.videoUrl || !!selectedScript.video_url ? 0.7 : 1,
+            }}
+          >
+            {videoState[selectedScript?.id]?.generating ? 'Generating...' : 'Generate Video'}
+          </button>
+        </Tooltip>
         {/* Output Avatars Button */}
-        <button
-          onClick={handleOutputAssets}
-          disabled={avatarsLoading}
-          className={`${styles.actionButton} ${styles.outputAvatarsButton}`}
-          style={{
-            background: avatarsLoading ? "#333" : "#2563eb",
-            cursor: avatarsLoading ? "not-allowed" : "pointer",
-            opacity: avatarsLoading ? 0.7 : 1,
-          }}
-          title="Fetch and output Heygen avatars and voices to the console."
-        >
-          {avatarsLoading ? "Loading Assets..." : "Output Avatars & Voices"}
-        </button>
+        <Tooltip text="Fetch and output Heygen avatars and voices to the console.">
+          <button
+            onClick={handleOutputAssets}
+            disabled={avatarsLoading}
+            className={`${styles.actionButton} ${styles.outputAvatarsButton}`}
+            style={{
+              background: avatarsLoading ? "#333" : "#2563eb",
+              cursor: avatarsLoading ? "not-allowed" : "pointer",
+              opacity: avatarsLoading ? 0.7 : 1,
+            }}
+          >
+            {avatarsLoading ? "Loading Assets..." : "Output Avatars & Voices"}
+          </button>
+        </Tooltip>
         {avatarsError && (
           <span className={styles.errorSpan}>{avatarsError}</span>
         )}
@@ -673,37 +737,39 @@ export default function HumorExperimentationPage() {
             />
             {pasteError && <div className={styles.modalError}>{pasteError}</div>}
             <div className={styles.modalActions}>
-              <button
-                onClick={() => {
-                  setShowPasteModal(false);
-                  setPastedTranscript("");
-                  setPasteError(null);
-                  setPasteName("");
-                  setPasteUrl("");
-                }}
-                className={`${styles.modalButton} ${styles.modalButtonCancel}`}
-                style={{
-                  cursor: pasteLoading ? "not-allowed" : "pointer",
-                  opacity: pasteLoading ? 0.7 : 1
-                }}
-                disabled={pasteLoading}
-                title="Cancel and close the paste transcript modal."
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handlePasteTranscriptSave}
-                className={`${styles.modalButton} ${styles.modalButtonConfirm}`}
-                style={{
-                  background: pasteLoading ? "#333" : "#2563eb",
-                  cursor: pasteLoading ? "not-allowed" : "pointer",
-                  opacity: pasteLoading ? 0.7 : 1
-                }}
-                disabled={pasteLoading}
-                title="Save the pasted transcript as a new script."
-              >
-                {pasteLoading ? "Saving..." : "OK"}
-              </button>
+              <Tooltip text="Cancel and close the paste transcript modal.">
+                <button
+                  onClick={() => {
+                    setShowPasteModal(false);
+                    setPastedTranscript("");
+                    setPasteError(null);
+                    setPasteName("");
+                    setPasteUrl("");
+                  }}
+                  className={`${styles.modalButton} ${styles.modalButtonCancel}`}
+                  style={{
+                    cursor: pasteLoading ? "not-allowed" : "pointer",
+                    opacity: pasteLoading ? 0.7 : 1
+                  }}
+                  disabled={pasteLoading}
+                >
+                  Cancel
+                </button>
+              </Tooltip>
+                              <Tooltip text="Save the pasted transcript as a new script.">
+                  <button
+                    onClick={handlePasteTranscriptSave}
+                    className={`${styles.modalButton} ${styles.modalButtonConfirm}`}
+                    style={{
+                      background: pasteLoading ? "#333" : "#2563eb",
+                      cursor: pasteLoading ? "not-allowed" : "pointer",
+                      opacity: pasteLoading ? 0.7 : 1
+                    }}
+                    disabled={pasteLoading}
+                  >
+                    {pasteLoading ? "Saving..." : "OK"}
+                  </button>
+                </Tooltip>
             </div>
           </div>
         </div>
@@ -740,46 +806,49 @@ export default function HumorExperimentationPage() {
           </select>
         )}
         {/* Delete button (garbage can icon) */}
-        <button
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={!selectedScript || deleteLoading}
-          title="Delete selected script"
-          className={`${styles.iconButton} ${styles.deleteButton}`}
-          style={{
-            background: deleteLoading ? "#333" : "#23232a",
-            color: deleteLoading ? "#888" : "#f87171",
-            cursor: !selectedScript || deleteLoading ? "not-allowed" : "pointer",
-            opacity: !selectedScript || deleteLoading ? 0.5 : 1,
-          }}
-        >
-          🗑️
-        </button>
+        <Tooltip text="Delete selected script">
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={!selectedScript || deleteLoading}
+            className={`${styles.iconButton} ${styles.deleteButton}`}
+            style={{
+              background: deleteLoading ? "#333" : "#23232a",
+              color: deleteLoading ? "#888" : "#f87171",
+              cursor: !selectedScript || deleteLoading ? "not-allowed" : "pointer",
+              opacity: !selectedScript || deleteLoading ? 0.5 : 1,
+            }}
+          >
+            🗑️
+          </button>
+        </Tooltip>
         {/* Convert with OpenAI button */}
-        <button
-          onClick={handleConvertScript}
-          disabled={!selectedScript || !!selectedScript.rewritten}
-          title="Rewrite the selected script using OpenAI in a chosen style."
-          className={`${styles.iconButton} ${styles.convertButton}`}
-          style={{
-            cursor: !selectedScript || !!selectedScript.rewritten ? "not-allowed" : "pointer",
-            opacity: !selectedScript || !!selectedScript.rewritten ? 0.5 : 1,
-          }}
-        >
-          ⚡
-        </button>
+        <Tooltip text="Rewrite the selected script using OpenAI in a chosen style.">
+          <button
+            onClick={handleConvertScript}
+            disabled={!selectedScript || !!selectedScript.rewritten}
+            className={`${styles.iconButton} ${styles.convertButton}`}
+            style={{
+              cursor: !selectedScript || !!selectedScript.rewritten ? "not-allowed" : "pointer",
+              opacity: !selectedScript || !!selectedScript.rewritten ? 0.5 : 1,
+            }}
+          >
+            ⚡
+          </button>
+        </Tooltip>
         {/* Mad Scientist Debug Button */}
-        <button
-          onClick={() => console.log(selectedScript)}
-          disabled={!selectedScript}
-          title="Log the current script object to the console for inspection."
-          className={`${styles.iconButton} ${styles.debugButton}`}
-          style={{
-            cursor: !selectedScript ? "not-allowed" : "pointer",
-            opacity: !selectedScript ? 0.5 : 1,
-          }}
-        >
-          🧑‍🔬
-        </button>
+        <Tooltip text="Log the current script object to the console for inspection.">
+          <button
+            onClick={() => console.log(selectedScript)}
+            disabled={!selectedScript}
+            className={`${styles.iconButton} ${styles.debugButton}`}
+            style={{
+              cursor: !selectedScript ? "not-allowed" : "pointer",
+              opacity: !selectedScript ? 0.5 : 1,
+            }}
+          >
+            🧑‍🔬
+          </button>
+        </Tooltip>
         {/* Rewrite Modal */}
         {showRewriteModal && selectedScript && (
           <div className={styles.modalOverlay} style={{ zIndex: 1200 }}>
@@ -828,7 +897,15 @@ export default function HumorExperimentationPage() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleRewriteSubmit}
+                  onClick={() => {
+                    console.log('🔄 Rewrite button clicked in modal:', {
+                      selectedScript: selectedScript,
+                      rewriteStyle: rewriteStyle,
+                      rewriteLength: rewriteLength,
+                      rewriteLoading: rewriteLoading
+                    });
+                    handleRewriteSubmit();
+                  }}
                   className={`${styles.modalButton} ${styles.modalButtonConfirm}`}
                   style={{
                     background: rewriteLoading ? '#333' : '#2563eb',
@@ -861,16 +938,17 @@ export default function HumorExperimentationPage() {
       <div className={styles.newsContainer}>
         <div className={styles.newsWrapper}>
           <div className={styles.newsHeader}>
-            <button
-              onClick={() => setNewsExpanded((v: boolean) => !v)}
-              className={styles.newsToggleButton}
-              aria-expanded={newsExpanded}
-              aria-controls="latest-news-panel"
-              title="Show or hide the latest news stories for joke inspiration."
-            >
-              <span>{newsExpanded ? '▼' : '►'}</span>
-              Latest News (for Joke Inspiration)
-            </button>
+            <Tooltip text="Show or hide the latest news stories for joke inspiration.">
+              <button
+                onClick={() => setNewsExpanded((v: boolean) => !v)}
+                className={styles.newsToggleButton}
+                aria-expanded={newsExpanded}
+                aria-controls="latest-news-panel"
+              >
+                <span>{newsExpanded ? '▼' : '►'}</span>
+                Latest News (for Joke Inspiration)
+              </button>
+            </Tooltip>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -993,29 +1071,31 @@ export default function HumorExperimentationPage() {
             ) : (videoState[selectedScript?.id]?.videoUrl || selectedScript?.video_url) ? (
               <div className={styles.videoPlayerContainer}>
                 {/* Publish Button Overlay */}
-                <button
-                  className={`${styles.iconButton} ${styles.publishIconButton}`}
-                  onClick={() => {
-                    if (selectedScript?.name) {
-                      window.location.href = `/publish?scriptName=${encodeURIComponent(selectedScript.name)}`;
-                    }
-                  }}
-                  title="Publish"
-                >
-                  ✈️
-                </button>
+                <Tooltip text="Publish">
+                  <button
+                    className={`${styles.iconButton} ${styles.publishIconButton}`}
+                    onClick={() => {
+                      if (selectedScript?.name) {
+                        window.location.href = `/publish?scriptName=${encodeURIComponent(selectedScript.name)}`;
+                      }
+                    }}
+                  >
+                    ✈️
+                  </button>
+                </Tooltip>
                 <video 
                   src={videoState[selectedScript.id]?.videoUrl || selectedScript.video_url} 
                   controls 
                   className={styles.videoPlayer}
                 />
-                <button
-                  className={`${styles.iconButton} ${styles.deleteVideoButton}`}
-                  onClick={() => handleDeleteVideo(selectedScript.id)}
-                  title="Delete Video"
-                >
-                  🗑️
-                </button>
+                <Tooltip text="Delete Video">
+                  <button
+                    className={`${styles.iconButton} ${styles.deleteVideoButton}`}
+                    onClick={() => handleDeleteVideo(selectedScript.id)}
+                  >
+                    🗑️
+                  </button>
+                </Tooltip>
               </div>
             ) : null}
             {videoState[selectedScript?.id]?.error && (
@@ -1039,57 +1119,61 @@ export default function HumorExperimentationPage() {
                   >
                     <span dangerouslySetInnerHTML={{ __html: highlightJokeTags(p) }} />
                   </div>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleRemoveParagraph(idx);
-                    }}
-                    title="Remove this paragraph from the script. This change is saved."
-                    className={styles.removeParagraphButton}
-                  >
-                    ✕
-                  </button>
+                  <Tooltip text="Remove this paragraph from the script. This change is saved.">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleRemoveParagraph(idx);
+                      }}
+                      className={styles.removeParagraphButton}
+                    >
+                      ✕
+                    </button>
+                  </Tooltip>
                 </li>
                 {selectedParagraphIdx === idx && (
                   <div className={styles.paragraphActions}>
                     {/* Comedian Dropdown */}
-                    <select
-                      value={selectedComedian[idx] || selectedComedian.default || ""}
-                      onChange={e => {
-                        setSelectedComedian(c => ({ ...c, [idx]: e.target.value }));
-                        if (typeof window !== 'undefined') {
-                          localStorage.setItem('lastSelectedComedian', e.target.value);
-                        }
-                      }}
-                      className={styles.comedianSelect}
-                      title="Choose a comedian's style to rewrite this paragraph."
-                    >
+                    <Tooltip text="Choose a comedian's style to rewrite this paragraph.">
+                      <select
+                        value={selectedComedian[idx] || selectedComedian.default || ""}
+                        onChange={e => {
+                          setSelectedComedian(c => ({ ...c, [idx]: e.target.value }));
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem('lastSelectedComedian', e.target.value);
+                          }
+                        }}
+                        className={styles.comedianSelect}
+                      >
                       <option value="">Select comedian style...</option>
                       {COMEDIAN_LIST.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
-                    {/* Generate Icon Button */}
-                    <button
-                      disabled={!(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx}
-                      onClick={() => handleExperiment(idx)}
-                      title="Generate a humorous variant of this paragraph in the selected comedian's style."
-                      className={`${styles.generateVariantButton} ${loadingIdx === idx ? styles.generateVariantButtonLoading : styles.generateVariantButtonActive}`}
-                      style={{
-                        cursor: !(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx ? "not-allowed" : "pointer",
-                        opacity: !(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx ? 0.6 : 1
-                      }}
-                    >
-                      <span role="img" aria-label="magic">🪄</span>
-                    </button>
+                  </Tooltip>
+                  {/* Generate Icon Button */}
+                    <Tooltip text="Generate a humorous variant of this paragraph in the selected comedian's style.">
+                      <button
+                        disabled={!(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx}
+                        onClick={() => handleExperiment(idx)}
+                        className={`${styles.generateVariantButton} ${loadingIdx === idx ? styles.generateVariantButtonLoading : styles.generateVariantButtonActive}`}
+                        style={{
+                          cursor: !(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx ? "not-allowed" : "pointer",
+                          opacity: !(selectedComedian[idx] || selectedComedian.default) || loadingIdx === idx ? 0.6 : 1
+                        }}
+                      >
+                        <span role="img" aria-label="magic">🪄</span>
+                      </button>
+                    </Tooltip>
                     {/* Deselect Button */}
-                    <button
-                      onClick={handleDeselect}
-                      className={styles.deselectButton}
-                      title="Deselect this paragraph."
-                    >
-                      ✕
-                    </button>
+                    <Tooltip text="Deselect this paragraph.">
+                      <button
+                        onClick={handleDeselect}
+                        className={styles.deselectButton}
+                      >
+                        ✕
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
                 {/* Variants List */}
@@ -1098,13 +1182,14 @@ export default function HumorExperimentationPage() {
                     {variants[idx].map((v, vIdx) => (
                       <li key={vIdx} className={styles.variantListItem}>
                         <span className={styles.variantText} dangerouslySetInnerHTML={{ __html: highlightJokeTags(v) }} />
-                        <button
-                          onClick={() => handleSaveVariant(idx, v)}
-                          className={styles.saveVariantButton}
-                          title="Replace the original paragraph with this variant and save."
-                        >
-                          💾
-                        </button>
+                        <Tooltip text="Replace the original paragraph with this variant and save.">
+                          <button
+                            onClick={() => handleSaveVariant(idx, v)}
+                            className={styles.saveVariantButton}
+                          >
+                            💾
+                          </button>
+                        </Tooltip>
                       </li>
                     ))}
                   </ul>
