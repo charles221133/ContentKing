@@ -67,7 +67,14 @@ export async function POST(req: NextRequest) {
 
     const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
-    return NextResponse.json({ signedUrl, key: `${user.id}/${fileName}` });
+    const key = `${user.id}/${fileName}`;
+    const publicDomainOverride = process.env.NEXT_PUBLIC_S3_PUBLIC_DOMAIN;
+    const bucketDomain = resolvedRegion && resolvedRegion !== 'us-east-1'
+      ? `${bucketName}.s3.${resolvedRegion}.amazonaws.com`
+      : `${bucketName}.s3.amazonaws.com`;
+    const publicUrl = `https://${publicDomainOverride || bucketDomain}/${key}`;
+
+    return NextResponse.json({ signedUrl, key, publicUrl });
   } catch (error) {
     console.error('Error creating signed URL', error);
     const message = error instanceof Error ? error.message : 'Failed to create signed URL';

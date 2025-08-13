@@ -45,15 +45,15 @@ export default function ReplaceVideoModal({ isOpen, onClose, script, onVideoRepl
         fileName: file.name,
         fileType: file.type
       });
-      const { signedUrl, key } = res.data;
+      const { signedUrl, key, publicUrl } = res.data;
       // 2. Upload file to S3
       await fetch(signedUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type },
         body: file
       });
-      // 3. Compose the S3 URL (assuming public bucket or known pattern)
-      const s3Url = `https://${process.env.NEXT_PUBLIC_S3_PUBLIC_DOMAIN || process.env.NEXT_PUBLIC_S3_BUCKET || 'YOUR_BUCKET'}.s3.amazonaws.com/${key}`;
+      // 3. Use server-provided public URL
+      const s3Url = publicUrl || `https://${process.env.NEXT_PUBLIC_S3_PUBLIC_DOMAIN || process.env.NEXT_PUBLIC_S3_BUCKET || 'YOUR_BUCKET'}.s3.amazonaws.com/${key}`;
       // 4. Save new video_url to script
       if (script) {
         await apiClient.post('/save-script', { script: { ...script, video_url: s3Url } });
