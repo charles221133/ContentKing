@@ -22,6 +22,7 @@ export default function PublishPage() {
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [isTikTokModalOpen, setIsTikTokModalOpen] = useState(false);
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
+  const [isYouTubeConnected, setIsYouTubeConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function loadScripts() {
@@ -56,6 +57,10 @@ export default function PublishPage() {
       }
     }
     loadScripts();
+    // Check YouTube connection status
+    apiClient.get('/youtube/status').then(res => {
+      setIsYouTubeConnected(!!res.data.connected);
+    }).catch(() => setIsYouTubeConnected(null));
   }, []);
 
   const handleScriptChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -227,6 +232,26 @@ export default function PublishPage() {
     setYoutubeVideoId(null);
   };
 
+  const handleYouTubeDisconnect = async () => {
+    try {
+      await apiClient.post('/youtube/revoke', {});
+      setStatus((prev) => ({ ...prev, youtube: 'Disconnected' }));
+      setIsYouTubeConnected(false);
+    } catch {}
+  };
+
+  const handleYouTubeConnect = () => {
+    const popup = window.open('/api/youtube/auth', 'youtube-auth', 'width=600,height=700');
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.source === popup && event.data.youtubeAuth) {
+        setIsYouTubeConnected(true);
+        window.removeEventListener('message', handleAuthMessage);
+        popup?.close();
+      }
+    };
+    window.addEventListener('message', handleAuthMessage, false);
+  };
+
   if (loading) return <div style={{ padding: 32 }}>Loading scripts...</div>;
   if (error) return <div style={{ padding: 32, color: 'red' }}>Error: {error}</div>;
 
@@ -304,22 +329,55 @@ export default function PublishPage() {
                       </a>
                     )}
                   </span>
-                  <button
-                    onClick={() => setIsModalOpen(true)}
-                    disabled={publishing['youtube'] || !selectedScript?.video_url}
-                    style={{
-                      padding: '10px 20px',
-                      background: '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      opacity: publishing['youtube'] || !selectedScript?.video_url ? 0.5 : 1,
-                      marginLeft: 'auto'
-                    }}
-                  >
-                    {publishing['youtube'] ? 'Publishing...' : 'Publish'}
-                  </button>
+                  {isYouTubeConnected ? (
+                    <button
+                      onClick={() => setIsModalOpen(true)}
+                      disabled={publishing['youtube'] || !selectedScript?.video_url}
+                      style={{
+                        padding: '10px 20px',
+                        background: '#2563eb',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        opacity: publishing['youtube'] || !selectedScript?.video_url ? 0.5 : 1,
+                        marginLeft: 'auto'
+                      }}
+                    >
+                      {publishing['youtube'] ? 'Publishing...' : 'Publish'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleYouTubeConnect}
+                      style={{
+                        padding: '10px 20px',
+                        background: '#2563eb',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        marginLeft: 'auto'
+                      }}
+                    >
+                      Connect
+                    </button>
+                  )}
+                  {isYouTubeConnected ? (
+                    <button
+                      onClick={handleYouTubeDisconnect}
+                      style={{
+                        padding: '10px 14px',
+                        background: 'transparent',
+                        color: '#e5e7eb',
+                        border: '1px solid #4b5563',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        marginLeft: 12
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  ) : null}
                 </div>
               </div>
 

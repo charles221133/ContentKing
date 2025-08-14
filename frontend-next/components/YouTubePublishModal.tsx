@@ -15,44 +15,77 @@ export default function YouTubePublishModal({ isOpen, onClose, onPublish, script
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
-  const [privacyStatus, setPrivacyStatus] = useState<'private' | 'public' | 'unlisted'>('private');
+  const [privacyStatus, setPrivacyStatus] = useState<'private' | 'public' | 'unlisted'>('public');
   const [madeForKids, setMadeForKids] = useState(false);
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
 
   useEffect(() => {
-    if (script) {
-      setTitle(script.name || '');
-      setDescription(script.description || '');
-      setTags('');
+    if (!script) return;
 
-      if (isOpen) {
-        setIsGeneratingDesc(true);
-        setIsGeneratingTags(true);
+    // Set defaults from script
+    setTitle(script.name || '');
+    setDescription(script.description || '');
+    setTags('');
 
-        apiClient.post('/generate-description', {
-          script: script.rewritten || script.original,
-          keywords: [],
-        }).then(res => {
-          setDescription(res.data.description);
-        }).catch(error => {
-          console.error('Failed to generate description:', error);
-        }).finally(() => {
-          setIsGeneratingDesc(false);
-        });
+    if (!isOpen) return;
 
-        apiClient.post('/generate-youtube-tags', {
-          script: script.rewritten || script.original,
-        }).then(res => {
-          setTags(res.data.tags);
-        }).catch(error => {
-          console.error('Failed to generate tags:', error);
-        }).finally(() => {
-          setIsGeneratingTags(false);
-        });
-      }
+    // Try load cached values for this video/script
+    const cacheKey = script.id ? `yt_pub_${script.id}` : (script.video_url ? `yt_pub_url_${script.video_url}` : null);
+    if (cacheKey) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (typeof parsed.title === 'string') setTitle(parsed.title);
+          if (typeof parsed.description === 'string') setDescription(parsed.description);
+          if (typeof parsed.tags === 'string') setTags(parsed.tags);
+          if (parsed.privacyStatus === 'private' || parsed.privacyStatus === 'public' || parsed.privacyStatus === 'unlisted') {
+            setPrivacyStatus(parsed.privacyStatus);
+          }
+          if (typeof parsed.madeForKids === 'boolean') setMadeForKids(parsed.madeForKids);
+          // Skip AI requests when cache is present
+          return;
+        }
+      } catch {}
     }
+
+    // No cache found – fall back to AI generation
+    setIsGeneratingDesc(true);
+    setIsGeneratingTags(true);
+
+    apiClient.post('/generate-description', {
+      script: script.rewritten || script.original,
+      keywords: [],
+    }).then(res => {
+      setDescription(res.data.description);
+    }).catch(error => {
+      console.error('Failed to generate description:', error);
+    }).finally(() => {
+      setIsGeneratingDesc(false);
+    });
+
+    apiClient.post('/generate-youtube-tags', {
+      script: script.rewritten || script.original,
+    }).then(res => {
+      setTags(res.data.tags);
+    }).catch(error => {
+      console.error('Failed to generate tags:', error);
+    }).finally(() => {
+      setIsGeneratingTags(false);
+    });
   }, [script, isOpen]);
+
+  // Persist current form values to localStorage for this script/video
+  useEffect(() => {
+    if (!isOpen || !script) return;
+    const cacheKey = script.id ? `yt_pub_${script.id}` : (script.video_url ? `yt_pub_url_${script.video_url}` : null);
+    if (!cacheKey) return;
+    try {
+      const payload = { title, description, tags, privacyStatus, madeForKids };
+      localStorage.setItem(cacheKey, JSON.stringify(payload));
+    } catch {}
+  }, [title, description, tags, privacyStatus, madeForKids, isOpen, script]);
 
   if (!isOpen) {
     return null;

@@ -4,12 +4,15 @@ import { google } from 'googleapis';
 export async function GET(request: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-
+  const configuredRedirectUri = process.env.GOOGLE_REDIRECT_URI;
   const vercelEnv = process.env.VERCEL_ENV;
   let redirectUri: string;
 
-  if (vercelEnv === 'production' || vercelEnv === 'preview') {
-    // VERCEL_URL is automatically set by Vercel.
+  // Prefer explicitly configured redirect URI to avoid domain mismatch
+  if (configuredRedirectUri) {
+    redirectUri = configuredRedirectUri;
+  } else if (vercelEnv === 'production' || vercelEnv === 'preview') {
+    // Fallback for Vercel environments if explicit env not set
     redirectUri = `https://${process.env.VERCEL_URL}/api/youtube/callback`;
   } else {
     // Default to localhost for development.

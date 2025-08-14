@@ -45,13 +45,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing videoUrl or title.' }, { status: 400 });
   }
 
-  // Get refresh token from cookie
-  const cookie = req.headers.get('cookie') || '';
-  const match = cookie.match(/yt_refresh_token=([^;]+)/);
-  if (!match) {
-    return NextResponse.json({ error: 'No YouTube refresh token found. Please authenticate.' }, { status: 401 });
+  // Get refresh token from cookie (server-side cookie store)
+  const refreshTokenCookie = cookieStore.get('yt_refresh_token')?.value;
+  if (!refreshTokenCookie) {
+    // Return a specific error flag so the client can prompt OAuth instead of logging out
+    return NextResponse.json({ error: 'youtube_token_invalid' }, { status: 401 });
   }
-  const refreshToken = decodeURIComponent(match[1]);
+  const refreshToken = decodeURIComponent(refreshTokenCookie);
 
   const oauth2Client = new OAuth2(
     clientId,
