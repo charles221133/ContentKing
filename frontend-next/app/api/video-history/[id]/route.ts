@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../utils/supabaseServerClient';
 
+type VideoHistoryRouteContext = {
+  params: Promise<{ id: string }>;
+};
+
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: VideoHistoryRouteContext
 ) {
   try {
     const supabase = await createSupabaseServerClient();
+    const { id } = await context.params;
     
     // Get the current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -19,7 +24,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('video_generations')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', user.id); // Ensure user can only delete their own videos
 
     if (error) {

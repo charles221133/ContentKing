@@ -19,6 +19,11 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; projectId: string; projectName: string }>({
+    show: false,
+    projectId: '',
+    projectName: ''
+  });
 
   // Load projects from API on component mount
   useEffect(() => {
@@ -135,33 +140,48 @@ export default function ProjectsPage() {
     setCharacters(project.characters);
     setFormData({
       name: project.name,
-      visualStyle: project.visualStyle,
-      description: project.description,
-      context: project.context
+      visualStyle: project.visualStyle || '',
+      description: project.description || '',
+      context: project.context || ''
     });
     setIsCreating(true);
   };
 
-  const handleDelete = async (projectId: string) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      try {
-        setDeletingProjectId(projectId);
-        const response = await projectsApi.deleteProject(projectId);
-        if (response.success) {
-          setProjects(prev => prev.filter(project => project.id !== projectId));
-        } else {
-          alert(response.error || 'Failed to delete project');
-        }
-      } catch (error: any) {
-        console.error('Error deleting project:', error);
-        alert('Failed to delete project');
-      } finally {
-        setDeletingProjectId(null);
+  const requestDeleteProject = (project: Project) => {
+    setDeleteConfirm({
+      show: true,
+      projectId: project.id,
+      projectName: project.name || 'Unnamed Project'
+    });
+  };
+
+  const cancelDeleteProject = () => {
+    if (deletingProjectId) return;
+    setDeleteConfirm({ show: false, projectId: '', projectName: '' });
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteConfirm.projectId) return;
+
+    try {
+      setDeletingProjectId(deleteConfirm.projectId);
+      const response = await projectsApi.deleteProject(deleteConfirm.projectId);
+      if (response.success) {
+        setProjects(prev => prev.filter(project => project.id !== deleteConfirm.projectId));
+        setDeleteConfirm({ show: false, projectId: '', projectName: '' });
+      } else {
+        alert(response.error || 'Failed to delete project');
       }
+    } catch (error: any) {
+      console.error('Error deleting project:', error);
+      alert('Failed to delete project');
+    } finally {
+      setDeletingProjectId(null);
     }
   };
 
   return (
+    <>
     <div style={{ padding: 32, maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ 
         background: '#18181b', 
@@ -294,7 +314,7 @@ export default function ProjectsPage() {
                   <input
                     type="text"
                     name="visualStyle"
-                    value={formData.visualStyle}
+                    value={formData.visualStyle || ''}
                     onChange={handleInputChange}
                     placeholder="e.g., Cinematic, Cartoon, Minimalist"
                     style={{
@@ -534,7 +554,7 @@ export default function ProjectsPage() {
                 </label>
                 <textarea
                   name="description"
-                  value={formData.description}
+                  value={formData.description || ''}
                   onChange={handleInputChange}
                   placeholder="Describe your project..."
                   rows={4}
@@ -567,7 +587,7 @@ export default function ProjectsPage() {
                 </label>
                 <textarea
                   name="context"
-                  value={formData.context}
+                  value={formData.context || ''}
                   onChange={handleInputChange}
                   placeholder="Background information or creative direction..."
                   rows={3}
@@ -846,7 +866,7 @@ export default function ProjectsPage() {
                       <FiEdit2 size={16} />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(project.id); }}
+                      onClick={(e) => { e.stopPropagation(); requestDeleteProject(project); }}
                       disabled={deletingProjectId === project.id}
                       style={{
                         background: 'transparent',
@@ -1036,5 +1056,135 @@ export default function ProjectsPage() {
         ) : null}
       </div>
     </div>
+
+    {deleteConfirm.show && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.8)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000
+      }}>
+        <div style={{
+          background: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
+          borderRadius: 12,
+          padding: 24,
+          maxWidth: 400,
+          width: '90%',
+          border: '2px solid #374151',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{
+              width: 48,
+              height: 48,
+              background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 16,
+              fontSize: 20,
+              boxShadow: '0 4px 8px rgba(127, 29, 29, 0.4)',
+              border: '2px solid rgba(255, 255, 255, 0.1)'
+            }}>
+              🗑️
+            </div>
+            <div>
+              <h3 style={{ color: '#fff', fontSize: 18, fontWeight: 700, margin: 0, marginBottom: 4 }}>
+                Delete Project
+              </h3>
+              <p style={{ color: '#9ca3af', fontSize: 14, margin: 0 }}>
+                This action cannot be undone
+              </p>
+            </div>
+          </div>
+
+          <div style={{
+            background: '#111827',
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 20,
+            border: '1px solid #374151'
+          }}>
+            <p style={{ color: '#d1d5db', fontSize: 14, margin: 0, lineHeight: 1.5 }}>
+              Are you sure you want to delete the project
+            </p>
+            <p style={{
+              color: '#9ca3af',
+              fontSize: 13,
+              margin: '8px 0 0 0',
+              fontStyle: 'italic'
+            }}>
+              "{deleteConfirm.projectName}"
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <button
+              onClick={cancelDeleteProject}
+              disabled={Boolean(deletingProjectId)}
+              style={{
+                padding: '12px 24px',
+                background: 'transparent',
+                color: '#9ca3af',
+                border: '2px solid #374151',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                minWidth: '120px',
+                cursor: deletingProjectId ? 'not-allowed' : 'pointer',
+                opacity: deletingProjectId ? 0.6 : 1
+              }}
+            >
+              No
+            </button>
+            <button
+              onClick={confirmDeleteProject}
+              disabled={Boolean(deletingProjectId)}
+              style={{
+                padding: '12px 24px',
+                background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
+                color: '#fff',
+                border: '2px solid #7f1d1d',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                minWidth: '120px',
+                cursor: deletingProjectId ? 'not-allowed' : 'pointer',
+                opacity: deletingProjectId ? 0.8 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8
+              }}
+            >
+              {deletingProjectId ? (
+                <>
+                  <div style={{
+                    width: 16,
+                    height: 16,
+                    border: '2px solid rgba(255,255,255,0.4)',
+                    borderTop: '2px solid rgba(255,255,255,0.9)',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  Deleting...
+                </>
+              ) : (
+                'Yes, Delete'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    </>
   );
 }

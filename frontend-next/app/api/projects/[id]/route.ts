@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../utils/supabaseServerClient';
 
+type ProjectRouteContext = {
+  params: Promise<{ id: string }>;
+};
+
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: ProjectRouteContext
 ) {
   try {
     const supabase = await createSupabaseServerClient();
+    const { id } = await context.params;
     
     // Get the current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -16,7 +21,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, visualStyle, characters, description, context } = body;
+    const { name, visualStyle, characters, description, context: projectContext } = body;
 
     // Validate required fields
     if (!name || !name.trim()) {
@@ -31,10 +36,10 @@ export async function PUT(
         visual_style: visualStyle?.trim() || null,
         characters: characters || [],
         description: description?.trim() || null,
-        context: context?.trim() || null,
+        context: projectContext?.trim() || null,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', user.id) // Ensure user can only update their own projects
       .select()
       .single();
@@ -56,10 +61,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: ProjectRouteContext
 ) {
   try {
     const supabase = await createSupabaseServerClient();
+    const { id } = await context.params;
     
     // Get the current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -72,7 +78,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('projects')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', user.id); // Ensure user can only delete their own projects
 
     if (error) {
